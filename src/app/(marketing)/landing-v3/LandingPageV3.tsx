@@ -143,51 +143,34 @@ export default function LandingPageV3() {
         <section className={styles.heroBand} aria-labelledby="v3-hero-title">
           <div className={styles.heroBackdrop} aria-hidden="true" />
           <div className={`${styles.rail} ${styles.heroFrame}`}>
-            <div className={styles.heroGrid}>
-              <div className={styles.heroContent}>
-                <div className={styles.statusPill}>
-                  <span className={styles.statusDot} aria-hidden="true" />
-                  <span>Luca AI Agent · Multi-Chain DeFi</span>
-                </div>
-
-                <h1 id="v3-hero-title" className={styles.heroTitle}>
-                  Meet Luca, the AI agent
-                  <br />
-                  <span className={styles.heroTitleMuted}>for multi-chain DeFi.</span>
-                </h1>
-
-                <p className={styles.heroLead}>
-                  Turn natural language into live swaps, fixed-rate P2P loans,
-                  concentrated LP positions, and cross-chain bridges across five
-                  networks—powered by Kaleido’s native V3 liquidity and deterministic
-                  routing engine.
-                </p>
-
-                <div className={styles.heroActions}>
-                  <a className={`${styles.btn} ${styles.btnPrimary}`} href={`${app}/trade/agent`}>
-                    <LuTerminal size={15} aria-hidden="true" />
-                    Open Luca
-                    <LuArrowUpRight size={16} aria-hidden="true" />
-                  </a>
-                  <a className={`${styles.btn} ${styles.btnGhost}`} href={app}>
-                    Launch markets
-                  </a>
-                </div>
+            <div className={styles.heroContent}>
+              <div className={styles.statusPill}>
+                <span className={styles.statusDot} aria-hidden="true" />
+                <span>Luca AI Agent · Multi-Chain DeFi</span>
               </div>
 
-              <div id="luca" className={styles.heroWorkbench}>
-                <div className={styles.chassis}>
-                  <div className={styles.chassisBar}>
-                    <div className={styles.chassisTitle}>
-                      <span className={styles.statusDot} aria-hidden="true" />
-                      <span>Luca AI Agent</span>
-                    </div>
-                    <span className={styles.chassisTag}>Live execution preview</span>
-                  </div>
-                  <div className={styles.chassisBody}>
-                    <LucaActionPreview />
-                  </div>
-                </div>
+              <h1 id="v3-hero-title" className={styles.heroTitle}>
+                Meet Luca, the AI agent
+                <br />
+                <span className={styles.heroTitleMuted}>for multi-chain DeFi.</span>
+              </h1>
+
+              <p className={styles.heroLead}>
+                Turn natural language into live swaps, fixed-rate P2P loans,
+                concentrated LP positions, and cross-chain bridges across five
+                networks—powered by Kaleido’s native V3 liquidity and deterministic
+                routing engine.
+              </p>
+
+              <div className={styles.heroActions}>
+                <a className={`${styles.btn} ${styles.btnPrimary}`} href={`${app}/trade/agent`}>
+                  <LuTerminal size={15} aria-hidden="true" />
+                  Open Luca
+                  <LuArrowUpRight size={16} aria-hidden="true" />
+                </a>
+                <a className={`${styles.btn} ${styles.btnGhost}`} href={app}>
+                  Launch markets
+                </a>
               </div>
             </div>
 
@@ -242,39 +225,56 @@ export default function LandingPageV3() {
           </div>
         </section>
 
-        {/* 01 / HOW LUCA WORKS */}
-        <section className={styles.band} aria-labelledby="v3-luca-title">
+        {/* 01 / LUCA */}
+        <section id="luca" className={styles.band} aria-labelledby="v3-luca-title">
           <div className={`${styles.rail} ${styles.sectionPad}`}>
             <div className={styles.sectionHeader}>
-              <span className={styles.sectionIndex}>01 · How Luca Works</span>
+              <span className={styles.sectionIndex}>01 · Luca</span>
               <a className={styles.headerLink} href={`${app}/trade/agent`}>
                 Open Luca
                 <LuArrowUpRight size={14} aria-hidden="true" />
               </a>
             </div>
 
-            <div className={styles.productsIntro}>
-              <h2 id="v3-luca-title" className={styles.sectionTitle}>
-                Natural language to
-                <br />
-                multi-chain calldata.
-              </h2>
-              <p className={styles.sectionDesc}>
-                Luca bridges human intent and onchain protocols—parsing requests
-                locally, quoting native V3 pools and aggregators in real time, and
-                compiling multi-hop execution across chains.
-              </p>
-            </div>
+            <div className={styles.lucaSplit}>
+              <div className={styles.lucaInfo}>
+                <h2 id="v3-luca-title" className={styles.sectionTitle}>
+                  Natural language to
+                  <br />
+                  multi-chain calldata.
+                </h2>
+                <p className={styles.sectionDesc}>
+                  Luca bridges human intent and onchain protocols—parsing requests
+                  locally, quoting native V3 pools and aggregators in real time, and
+                  compiling multi-hop execution across chains.
+                </p>
 
-            <ol className={styles.stepGrid}>
-              {lucaSteps.map(({ step, title, detail }) => (
-                <li key={step} className={styles.stepCard}>
-                  <span className={styles.stepNum}>{step}</span>
-                  <h3>{title}</h3>
-                  <p>{detail}</p>
-                </li>
-              ))}
-            </ol>
+                <ol className={styles.stepList}>
+                  {lucaSteps.map(({ step, title, detail }) => (
+                    <li key={step} className={styles.stepItem}>
+                      <span className={styles.stepNum}>{step}</span>
+                      <div>
+                        <h3>{title}</h3>
+                        <p>{detail}</p>
+                      </div>
+                    </li>
+                  ))}
+                </ol>
+              </div>
+
+              <div className={styles.chassis}>
+                <div className={styles.chassisBar}>
+                  <div className={styles.chassisTitle}>
+                    <span className={styles.statusDot} aria-hidden="true" />
+                    <span>Luca AI Agent</span>
+                  </div>
+                  <span className={styles.chassisTag}>Live execution preview</span>
+                </div>
+                <div className={styles.chassisBody}>
+                  <LucaActionPreview />
+                </div>
+              </div>
+            </div>
           </div>
         </section>
 
