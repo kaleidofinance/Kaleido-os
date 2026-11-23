@@ -1,25 +1,25 @@
 import type { Metadata } from "next";
-import LandingPage from "./landing-v2/LandingPage";
+import LandingPageV3 from "./landing-v3/LandingPageV3";
 
 export const metadata: Metadata = {
-  title: "Kaleido Finance | Onchain finance, made clear.",
+  title: "Kaleido Finance | Meet Luca, the AI agent for multi-chain DeFi.",
   description:
-    "Trade, lend and manage liquidity across chains. Tell Luca what you want to do, review the plan, and sign from your own wallet.",
+    "Turn natural language into live swaps, fixed-rate P2P loans, concentrated LP positions, and cross-chain bridges across five networks with Luca AI and Kaleido’s native V3 liquidity.",
   openGraph: {
-    title: "Kaleido Finance | Onchain finance, made clear.",
+    title: "Kaleido Finance | Meet Luca, the AI agent for multi-chain DeFi.",
     description:
-      "Trade, lend and manage liquidity across chains. Tell Luca what you want to do, review the plan, and sign from your own wallet.",
+      "Turn natural language into live swaps, fixed-rate P2P loans, concentrated LP positions, and cross-chain bridges across five networks with Luca AI and Kaleido’s native V3 liquidity.",
     images: ["/landing-v2-colosseum-dark.webp"],
   },
   twitter: {
     card: "summary_large_image",
-    title: "Kaleido Finance | Onchain finance, made clear.",
+    title: "Kaleido Finance | Meet Luca, the AI agent for multi-chain DeFi.",
     description:
-      "Trade, lend and manage liquidity across chains. Tell Luca what you want to do, review the plan, and sign from your own wallet.",
+      "Turn natural language into live swaps, fixed-rate P2P loans, concentrated LP positions, and cross-chain bridges across five networks with Luca AI and Kaleido’s native V3 liquidity.",
     images: ["/landing-v2-colosseum-dark.webp"],
   },
 };
 
 export default function Page() {
-  return <LandingPage />;
+  return <LandingPageV3 />;
 }

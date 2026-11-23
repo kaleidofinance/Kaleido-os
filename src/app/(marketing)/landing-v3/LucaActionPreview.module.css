@@ -1,0 +1,385 @@
+.wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.topRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.tabs {
+  display: inline-flex;
+  gap: 2px;
+  padding: 2px;
+  border: 1px solid var(--rail);
+  border-radius: var(--r-control);
+  background: var(--bg);
+}
+
+.tab {
+  min-height: 30px;
+  padding: 0 12px;
+  border: 0;
+  border-radius: var(--r-control);
+  background: transparent;
+  color: var(--muted);
+  font-size: 0.76rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background-color 140ms var(--ease-out), color 140ms var(--ease-out);
+}
+
+.tab:hover {
+  color: var(--ink);
+}
+
+.tabActive {
+  background: var(--surface-elev);
+  color: var(--ink);
+}
+
+.playBtn {
+  display: grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  border: 1px solid var(--rail);
+  border-radius: var(--r-control);
+  background: var(--bg);
+  color: var(--ink-dim);
+  cursor: pointer;
+  transition: border-color 140ms var(--ease-out), color 140ms var(--ease-out), transform 120ms var(--ease-out);
+}
+
+.playBtn:hover {
+  border-color: var(--rail-strong);
+  color: var(--ink);
+}
+
+.playBtn:active {
+  transform: scale(0.95);
+}
+
+/* Prompt Bar */
+.promptBox {
+  padding: 14px 16px;
+  border: 1px solid var(--rail-strong);
+  border-radius: var(--r-panel);
+  background: var(--bg);
+}
+
+.promptMeta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.promptTag {
+  font-family: var(--mono);
+  font-size: 0.65rem;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  color: var(--muted);
+}
+
+.chainBadge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-family: var(--mono);
+  font-size: 0.68rem;
+  font-variant-numeric: tabular-nums;
+  color: var(--ink-dim);
+}
+
+.promptText {
+  min-height: 26px;
+  font-size: 0.96rem;
+  font-weight: 500;
+  letter-spacing: -0.01em;
+  color: var(--ink);
+}
+
+.cursor {
+  display: inline-block;
+  width: 2px;
+  height: 1em;
+  margin-left: 2px;
+  vertical-align: -2px;
+  background: var(--accent);
+  animation: blink 900ms step-end infinite;
+}
+
+@keyframes blink {
+  50% { opacity: 0; }
+}
+
+/* Stage */
+.stage {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.routeRow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  border: 1px solid var(--rail);
+  border-radius: var(--r-control);
+  background: var(--surface);
+  font-family: var(--mono);
+  font-size: 0.71rem;
+  color: var(--muted);
+  opacity: 0.55;
+  transition: opacity 180ms var(--ease-out), color 180ms var(--ease-out);
+}
+
+.visible {
+  opacity: 1;
+  color: var(--ink-dim);
+}
+
+.routeIcon {
+  display: grid;
+  place-items: center;
+  color: var(--accent);
+}
+
+.spin {
+  animation: spin 900ms linear infinite;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+.routeText {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Plan Card */
+.planCard {
+  border: 1px solid var(--rail);
+  border-radius: var(--r-panel);
+  background: var(--bg);
+  overflow: hidden;
+  opacity: 0.35;
+  transform: translateY(4px);
+  transition: opacity 220ms var(--ease-out), transform 220ms var(--ease-out), border-color 220ms var(--ease-out);
+}
+
+.planVisible {
+  opacity: 1;
+  transform: translateY(0);
+  border-color: var(--rail-strong);
+}
+
+.planSummary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 14px;
+  border-bottom: 1px solid var(--rail);
+  background: var(--surface);
+  font-variant-numeric: tabular-nums;
+}
+
+.planSummary strong {
+  font-size: 0.84rem;
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.planSummary span {
+  font-family: var(--mono);
+  font-size: 0.7rem;
+  color: var(--muted);
+}
+
+.steps {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.stepRow {
+  display: grid;
+  grid-template-columns: 26px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 14px;
+  border-bottom: 1px solid var(--rail);
+  transition: background-color 180ms var(--ease-out);
+}
+
+.stepActive {
+  background: var(--surface);
+}
+
+.stepBadge {
+  display: grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  border: 1px solid var(--rail-strong);
+  border-radius: var(--r-control);
+  background: var(--surface);
+  font-family: var(--mono);
+  font-size: 0.68rem;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  color: var(--muted);
+  transition: background-color 180ms var(--ease-out), border-color 180ms var(--ease-out), color 180ms var(--ease-out);
+}
+
+.stepDone .stepBadge {
+  border-color: var(--accent);
+  background: var(--accent);
+  color: var(--accent-ink);
+}
+
+.stepCopy strong {
+  display: block;
+  font-size: 0.84rem;
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.stepCopy span {
+  display: block;
+  margin-top: 2px;
+  font-size: 0.74rem;
+  color: var(--muted);
+}
+
+.stepState {
+  font-family: var(--mono);
+  font-size: 0.68rem;
+  letter-spacing: 0.04em;
+  color: var(--muted);
+}
+
+.stepDone .stepState {
+  color: var(--accent);
+}
+
+/* Plan Footer */
+.planFooter {
+  padding: 11px 14px;
+  background: var(--surface);
+}
+
+.signBar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.signHint {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 0.76rem;
+  color: var(--ink-dim);
+}
+
+.signPill {
+  padding: 6px 12px;
+  border: 1px solid var(--rail-strong);
+  border-radius: var(--r-control);
+  background: var(--bg);
+  font-size: 0.74rem;
+  font-weight: 600;
+  color: var(--ink-dim);
+  transition: background-color 180ms var(--ease-out), border-color 180ms var(--ease-out), color 180ms var(--ease-out), transform 140ms var(--ease-out);
+}
+
+.signPillActive {
+  border-color: var(--accent);
+  background: var(--accent);
+  color: var(--accent-ink);
+  transform: scale(0.97);
+}
+
+.settledBar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: var(--accent);
+}
+
+/* Bottom Link Row */
+.bottomBar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding-top: 4px;
+}
+
+.bottomNote {
+  font-size: 0.74rem;
+  color: var(--muted);
+}
+
+.openLink {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-family: var(--mono);
+  font-size: 0.72rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--ink);
+  text-decoration: none;
+  white-space: nowrap;
+  transition: color 140ms var(--ease-out);
+}
+
+.openLink:hover {
+  color: var(--accent);
+}
+
+@media (max-width: 520px) {
+  .planSummary {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 4px;
+  }
+
+  .bottomBar {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 6px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .cursor,
+  .spin {
+    animation: none;
+  }
+
+  .planCard,
+  .routeRow,
+  .stepRow,
+  .stepBadge,
+  .signPill {
+    transition: none;
+  }
+}
