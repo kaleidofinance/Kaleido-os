@@ -33,6 +33,7 @@
    the line, and --k-bg against the ambient layer is already a soft edge. */
 .scrolled {
   background: var(--k-bg);
+  border-bottom: 1px solid var(--k-line);
 }
 
 @supports (
@@ -40,8 +41,7 @@
 ) {
   .scrolled {
     background: var(--k-glass);
-    /* Not transitioned: none → blur() has no sensible interpolation, and the
-       hard switch is invisible because the page is mid-scroll when it fires. */
+    border-bottom: 1px solid var(--k-line);
     -webkit-backdrop-filter: blur(var(--k-glass-blur))
       saturate(var(--k-glass-sat));
     backdrop-filter: blur(var(--k-glass-blur)) saturate(var(--k-glass-sat));

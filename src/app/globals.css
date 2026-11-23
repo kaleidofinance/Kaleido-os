@@ -34,13 +34,13 @@
    overscroll/rubber-band area and the area beyond short pages match the
    theme instead of flashing black. Kept in sync with --k-bg. */
 :root {
-  --page-bg: #000000;
-  --page-fg: #ffffff;
+  --page-bg: #0e0e0c;
+  --page-fg: #ecebe5;
 }
 
 :root[data-theme="light"] {
-  --page-bg: #faf9f5;
-  --page-fg: #141413;
+  --page-bg: #f3f2ed;
+  --page-fg: #161614;
 }
 
 body {
@@ -116,27 +116,27 @@ input[type="number"] {
  * out, with the light theme keyed off <html data-theme> like tokens.css.
  * ------------------------------------------------------------------ */
 [data-sonner-toast].k-toast {
-  --kt-bg: #1d1c1a;
-  --kt-line: rgba(255, 255, 255, 0.1);
-  --kt-t1: #ffffff;
-  --kt-t2: #a8a49b;
-  --kt-brand: #00b383;
-  --kt-brand-fg: #0b0b0a;
+  --kt-bg: #151513;
+  --kt-line: rgba(236, 235, 229, 0.12);
+  --kt-t1: #ecebe5;
+  --kt-t2: #a5a49c;
+  --kt-brand: #6ee7a8;
+  --kt-brand-fg: #081a11;
   background: var(--kt-bg) !important;
   border: 1px solid var(--kt-line) !important;
   color: var(--kt-t1) !important;
-  border-radius: 16px !important;
-  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.45) !important;
+  border-radius: 4px !important;
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.42) !important;
   padding: 14px 16px !important;
 }
 :root[data-theme="light"] [data-sonner-toast].k-toast {
-  --kt-bg: #ffffff;
-  --kt-line: rgba(20, 20, 19, 0.1);
-  --kt-t1: #141413;
-  --kt-t2: #6d6b63;
-  --kt-brand: #12a866;
-  --kt-brand-fg: #ffffff;
-  box-shadow: 0 12px 32px rgba(20, 20, 19, 0.14) !important;
+  --kt-bg: #eae9e2;
+  --kt-line: rgba(22, 22, 20, 0.14);
+  --kt-t1: #161614;
+  --kt-t2: #4c4b46;
+  --kt-brand: #1c4c37;
+  --kt-brand-fg: #f4fbf6;
+  box-shadow: 0 12px 32px rgba(22, 22, 20, 0.12) !important;
 }
 [data-sonner-toast].k-toast [data-title] {
   color: var(--kt-t1) !important;
@@ -148,7 +148,7 @@ input[type="number"] {
 [data-sonner-toast].k-toast [data-button] {
   background: var(--kt-brand) !important;
   color: var(--kt-brand-fg) !important;
-  border-radius: 999px !important;
+  border-radius: 2px !important;
   font-weight: 600;
   padding: 0 14px !important;
 }

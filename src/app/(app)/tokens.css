@@ -54,65 +54,43 @@
 
      If the app ever does drift olive, pull these toward neutral. Do not
      desaturate the brand — the greens are the identity. --- */
-  --k-bg: #000000;
-  --k-card: #121211;
-  --k-well: #0d0d0c;
-  --k-well2: #1b1b19;
-  --k-hover: #242422;
-  /* Up a hair from 0.07/0.12: the ground and cards both lifted, so a
-     white hairline at the old alpha has less to push against. */
-  --k-line: rgba(255, 255, 255, 0.075);
-  --k-line2: rgba(255, 255, 255, 0.13);
+  --k-bg: #0e0e0c;
+  --k-card: #151513;
+  --k-well: #11110f;
+  --k-well2: #1c1c19;
+  --k-hover: #23231f;
+  --k-line: rgba(236, 235, 229, 0.075);
+  --k-line2: rgba(236, 235, 229, 0.14);
 
-  /* Row hover *on a glass surface*. --k-hover and --k-well2 are opaque, so
-     using them inside a translucent container stamps a solid slab through it
-     and undoes the glass exactly where the pointer is. This is a tint instead:
-     it composites onto whatever the surface already shows. Lightens on dark,
-     darkens on light, so the direction of the hover matches every opaque
-     control in the app. */
-  --k-row-hover: rgba(255, 255, 255, 0.05);
+  --k-row-hover: rgba(236, 235, 229, 0.045);
 
-  /* --k-t1 stays pure white — Claude sets near-white on ink, and #faf9f5
-     as body text on a dark ground reads dingy rather than warm.
-     --k-t2 is one step below Claude's mid grey #b0aea5, which is too
-     light for secondary text at weight 485. Measured 6.85:1 on --k-card,
-     up from 5.9:1 before this change. */
-  --k-t1: #ffffff;
-  --k-t2: #a8a49b;
-  --k-t3: #6b6760;
+  --k-t1: #ecebe5;
+  --k-t2: #a5a49c;
+  --k-t3: #7a7972;
 
-  /* --- brand green: FILL, chrome only (hue ~164) --- */
-  --k-brand: #00b383;
-  --k-brand-hover: #0ac795;
-  --k-brand-dim: rgba(0, 179, 131, 0.13);
-  --k-brand-fg: #04170f; /* text on a brand fill */
+  /* --- brand green: V3 Signal Jade --- */
+  --k-brand: #6ee7a8;
+  --k-brand-hover: #82eeb5;
+  --k-brand-dim: rgba(110, 231, 168, 0.12);
+  --k-brand-fg: #081a11;
 
-  /* --- data green: TEXT, numbers only (hue ~141) --- */
-  --k-pos: #4cc46a;
-  --k-neg: #ff5f52;
+  /* --- data green: TEXT, numbers only --- */
+  --k-pos: #6ee7a8;
+  --k-neg: #ff6b5e;
 
   /* --- secondary accent: attention without alarm --- */
   --k-alt: #f0803c;
   --k-alt-dim: rgba(240, 128, 60, 0.14);
 
   /* --- danger: destructive + hard failure --- */
-  --k-danger: #ff5f52;
-  --k-danger-dim: rgba(255, 95, 82, 0.14);
+  --k-danger: #ff6b5e;
+  --k-danger-dim: rgba(255, 107, 94, 0.14);
 
-  /* --- solid button: the high-contrast CTA. Was `#fff` / `#0d0d0d`
-     hardcoded at 11 sites, which inverts to white-on-white the moment
-     a light theme exists.
-
-     The dark half used to track --k-bg and no longer does: --k-bg went to
-     #000 and this stayed #141413. Deliberate — this is ink on a white pill,
-     not a ground, so it has no seam to match, and warm-black vs pure-black
-     glyphs on white differ by about 1.5% luminance, which is not a visible
-     difference at text size. Keeping it warm is the one place the ink
-     survives the ground going achromatic. --- */
-  --k-btn-solid: #ffffff;
-  --k-btn-solid-hover: #e6e6e6;
-  --k-btn-solid-fg: #141413;
-  --k-btn-solid-fg-dim: rgba(20, 20, 19, 0.6);
+  /* --- solid button: high-contrast machined CTA --- */
+  --k-btn-solid: #ecebe5;
+  --k-btn-solid-hover: #dcdbd3;
+  --k-btn-solid-fg: #0e0e0c;
+  --k-btn-solid-fg-dim: rgba(14, 14, 12, 0.62);
 
   /* --- modal scrim --- */
   --k-scrim: rgba(0, 0, 0, 0.6);
@@ -148,40 +126,23 @@
    * a generic glass kit. Alpha runs a touch higher than the white
    * it replaced because bone is dimmer at equal opacity.
    * ---------------------------------------------------------- */
-  --k-glass: rgba(255, 255, 255, 0.035);
-  --k-glass-strong: rgba(255, 255, 255, 0.055);
-  --k-glass-line: rgba(255, 255, 255, 0.1);
-  --k-glass-highlight: rgba(250, 249, 245, 0.1);
-  --k-glass-blur: 20px;
-  --k-glass-sat: 140%;
+  /* Matte machined surfaces (replaces foggy glassmorphism) */
+  --k-glass: rgba(21, 21, 19, 0.88);
+  --k-glass-strong: rgba(28, 28, 25, 0.96);
+  --k-glass-line: rgba(236, 235, 229, 0.09);
+  --k-glass-highlight: rgba(236, 235, 229, 0.06);
+  --k-glass-blur: 14px;
+  --k-glass-sat: 110%;
 
-  /* The third glass step, and the only one that goes *down*. --k-glass and
-     --k-glass-strong are 0.045 and 0.075 white — three points of alpha apart,
-     which is a real difference on a paired surface and no difference at all on
-     a ground this dark. To sit a well visibly below its neighbour the wash has
-     to invert: black over the ground rather than less white over it. Paired
-     with --k-shadow-inset, which drops the lit top edge a raised surface
-     carries and replaces it with the groove a recessed one does.
+  --k-glass-deep: #11110f;
+  --k-shadow-inset: inset 0 1px 2px rgba(0, 0, 0, 0.28);
 
-     Alpha went 0.16 -> 0.45 when the ground went #141413 -> #000, and it had
-     to. Every one of these wells sits inside a glass container, not on the raw
-     ground, so the backdrop is ~0.045 white over the ambient layer — which was
-     about 30/255 on warm ink and is about 11/255 on black. Subtracting 16% of
-     11 moves the surface two points; it moved five before. The well was still
-     a well, just no longer findable. 0.45 of 11 puts it back about five points
-     under its neighbour, which is the relationship the step was tuned to and
-     not a new, darker look. Eyeball this one on a real page: the arithmetic
-     assumes a region outside the ambient lenses, and inside them the glass
-     samples more, so the true depth varies across the viewport. */
-  --k-glass-deep: rgba(0, 0, 0, 0.45);
-  --k-shadow-inset: inset 0 1px 2px rgba(0, 0, 0, 0.3);
-
-  /* --- radii: Uniswap's generous scale --- */
-  --k-r-sm: 12px; /* inputs, small controls */
-  --k-r-md: 16px; /* buttons, inner wells */
-  --k-r-lg: 20px; /* cards, table containers */
-  --k-r-xl: 24px; /* the swap/agent card, modals */
-  --k-r-pill: 999px; /* nav pills, chips, primary buttons */
+  /* --- radii: V3 Calm & Industrial machined shape lock --- */
+  --k-r-sm: 2px; /* inputs, chips, small controls */
+  --k-r-md: 4px; /* buttons, inner wells */
+  --k-r-lg: 4px; /* cards, table containers */
+  --k-r-xl: 6px; /* the swap/agent shell, modals */
+  --k-r-pill: 4px; /* machined buttons, nav tabs, action controls */
 
   /* --- type scale: 6 sizes, nothing between. 485 is the soft body
      weight, 535 its "medium". Both are off-step on purpose and need a
@@ -236,27 +197,18 @@
      no overshoot. Springy easing on a financial app reads as toy-
      like. --k-ease-out is for things entering. --- */
   --k-dur-fast: 120ms; /* press, hover, colour */
-  --k-dur-med: 200ms; /* reveals, dropdowns */
-  --k-dur-slow: 320ms; /* modals, route-level */
-  --k-ease: cubic-bezier(0.32, 0.72, 0, 1);
-  --k-ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+  --k-dur-med: 190ms; /* reveals, dropdowns */
+  --k-dur-slow: 280ms; /* modals, route-level */
+  --k-ease: cubic-bezier(0.23, 1, 0.32, 1);
+  --k-ease-out: cubic-bezier(0.23, 1, 0.32, 1);
 
   --k-font:
     var(--font-geist), "Inter", system-ui, -apple-system, "Segoe UI", Roboto,
     sans-serif;
 
-  /* --- display face: a serif for titles only, never for data.
-     Lora, because Claude's own faces (Copernicus, Tiempos Headline,
-     Styrene B) are commercially licensed and cannot be vendored —
-     Anthropic's public brand guidelines substitute Lora for exactly this
-     reason, so it is their own stand-in rather than our guess.
-
-     -0.02em is the load-bearing half of the effect. Claude's display
-     rule is negative tracking (-0.3 to -1.5px) at weight 400 and never
-     bold; a serif set at default tracking reads as a word processor,
-     not as a brand. em rather than px so it scales with the step. --- */
-  --k-font-display: var(--font-lora), Georgia, "Times New Roman", serif;
-  --k-ls-display: -0.02em;
+  /* Emphasis stays in the Geist family (Appllama Law 7 / V3 Calm & Industrial) */
+  --k-font-display: var(--k-font);
+  --k-ls-display: -0.035em;
 }
 
 /* ------------------------------------------------------------------
@@ -271,56 +223,46 @@
  * the hairline and shadow to separate the surface instead.
  * ------------------------------------------------------------------ */
 :root[data-theme="light"] .kaleido-v2 {
-  /* Claude's bone paper. Same warmth discipline as the dark ramp: R > G > B
-     with a small delta, so the page reads as paper rather than as cream. */
-  --k-bg: #f3efe6;
-  --k-card: #ffffff;
-  --k-well: #ece7db;
-  --k-well2: #e4ddce;
-  --k-hover: #ddd5c4;
-  --k-line: rgba(20, 20, 19, 0.08);
-  --k-line2: rgba(20, 20, 19, 0.14);
-  --k-row-hover: rgba(20, 20, 19, 0.045);
+  /* V3 Warm Architectural Stone */
+  --k-bg: #f3f2ed;
+  --k-card: #eae9e2;
+  --k-well: #faf9f5;
+  --k-well2: #e1e0d8;
+  --k-hover: #d8d7ce;
+  --k-line: rgba(22, 22, 20, 0.08);
+  --k-line2: rgba(22, 22, 20, 0.16);
+  --k-row-hover: rgba(22, 22, 20, 0.045);
 
-  /* --k-t2 and --k-t3 were green-tinted (#6d7873, #9aa39e — G above both
-     neighbours). Against a bone ground that tint is visible as a cast on
-     every label in the app, and it competed with the brand green for the
-     same signal. They are warm greys now, which is the single most
-     noticeable change in light mode. */
-  --k-t1: #141413;
-  --k-t2: #6d6b63;
-  --k-t3: #9c988e;
+  --k-t1: #161614;
+  --k-t2: #4c4b46;
+  --k-t3: #6e6d67;
 
-  --k-brand: #12a866; /* #00b383 has no contrast on white */
-  --k-brand-hover: #0e8f57;
-  --k-brand-dim: rgba(18, 168, 102, 0.1);
-  --k-brand-fg: #ffffff;
+  --k-brand: #1c4c37;
+  --k-brand-hover: #153c2b;
+  --k-brand-dim: rgba(28, 76, 55, 0.1);
+  --k-brand-fg: #f4fbf6;
 
-  --k-pos: #0c8911;
-  --k-neg: #e01a2b;
-  --k-alt: #e2650f;
-  --k-alt-dim: rgba(226, 101, 15, 0.1);
-  --k-danger: #e01a2b;
-  --k-danger-dim: rgba(224, 26, 43, 0.08);
+  --k-pos: #1c4c37;
+  --k-neg: #d92634;
+  --k-alt: #c75b12;
+  --k-alt-dim: rgba(199, 91, 18, 0.1);
+  --k-danger: #d92634;
+  --k-danger-dim: rgba(217, 38, 52, 0.08);
 
-  /* Inverted: a white CTA on a light ground would vanish. */
-  --k-btn-solid: #141413;
-  --k-btn-solid-hover: #302e29;
-  --k-btn-solid-fg: #ffffff;
-  --k-btn-solid-fg-dim: rgba(255, 255, 255, 0.7);
+  --k-btn-solid: #161614;
+  --k-btn-solid-hover: #2d2d29;
+  --k-btn-solid-fg: #f3f2ed;
+  --k-btn-solid-fg-dim: rgba(243, 242, 237, 0.72);
 
-  --k-scrim: rgba(20, 20, 19, 0.32);
+  --k-scrim: rgba(22, 22, 20, 0.34);
 
-  --k-glass: rgba(255, 255, 255, 0.72);
-  --k-glass-strong: rgba(255, 255, 255, 0.85);
-  --k-glass-line: rgba(20, 20, 19, 0.08);
-  --k-glass-highlight: rgba(243, 239, 230, 0.92);
+  --k-glass: rgba(243, 242, 237, 0.9);
+  --k-glass-strong: rgba(234, 233, 226, 0.97);
+  --k-glass-line: rgba(22, 22, 20, 0.1);
+  --k-glass-highlight: rgba(250, 249, 245, 0.92);
 
-  /* Ink, not black, and an eighth of the dark side's alpha. The dark ramp can
-     take a heavy wash because it is washing near-black over near-black; the
-     same number on bone paper reads as a dirty smudge rather than a recess. */
-  --k-glass-deep: rgba(20, 20, 19, 0.055);
-  --k-shadow-inset: inset 0 1px 2px rgba(20, 20, 19, 0.06);
+  --k-glass-deep: #faf9f5;
+  --k-shadow-inset: inset 0 1px 2px rgba(22, 22, 20, 0.05);
 
   /* Layered, and the tight layer is the one that does the work. A single
      `0 20px 50px` at 12% — which is what these were — spreads all of its ink
@@ -556,6 +498,12 @@
       rgba(20, 20, 19, 0.03) 0 1px,
       transparent 1px 64px
     );
+}
+
+/* V3 Calm & Industrial matte ground: hide radial blur lenses & wallpaper grid */
+.kaleido-v2::before,
+.kaleido-v2::after {
+  display: none;
 }
 
 .kaleido-v2 .tabular,
