@@ -1665,60 +1665,40 @@ a.txAction:hover {
       background: linear-gradient(var(--k-glass), var(--k-glass)), var(--k-bg);
     }
   }
-  /* On a phone the six-column desktop table is the wrong topology: a sideways
-     scroll hides the figures that explain the pool and makes the first row look
-     like columns are colliding. Reflow each row into a compact card instead.
-     The pair leads, the four measures form a readable 2x2, and the action closes
-     the card. `data-label` keeps the meaning visible after the table header hides. */
+  /* Match Leaderboard's clean mobile table: horizontally scrollable inside the
+     glass card container, visible header row, crisp single-line tabular rows,
+     and the sticky left-pinned Pair column above so pool names stay anchored
+     while swiping across TVL, APR, 24h Volume, 24h Fees, and Deposit. */
   .table.pools {
-    overflow: visible;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+  .pools .thead,
+  .pools .row {
+    min-width: 700px;
+    grid-template-columns: minmax(210px, 1.75fr) 0.9fr 1.25fr 0.95fr 0.9fr 86px;
+    gap: 10px;
   }
   .pools .thead {
-    display: none;
+    display: grid;
+    padding: 10px 14px 8px;
+    border-bottom: 1px solid var(--k-line);
   }
   .pools .row {
-    min-width: 0;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap: 12px 16px;
-    padding: 14px;
+    padding: 12px 14px;
+    border-radius: 0;
+    border-bottom: 1px solid var(--k-line);
   }
-  .pools .row > .pairCell {
-    position: static;
-    grid-column: 1 / -1;
-    align-self: center;
-    margin-left: 0;
-    padding-left: 0;
-    min-width: 0;
-    background: none;
-    box-shadow: none;
+  .pools .row:last-child {
+    border-bottom: 0;
   }
-  .pools .row > [data-label] {
-    min-width: 0;
-    display: flex;
-    flex-direction: column;
-    align-items: flex-start;
-    justify-self: stretch;
-    gap: 3px;
-    text-align: left;
-    white-space: normal;
+  .pools .pairName {
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
   }
-  .pools .row > [data-label]::before {
-    content: attr(data-label);
-    color: var(--k-t3);
-    font-size: var(--k-fs-xs);
-    line-height: 1.2;
-    font-weight: var(--k-fw-reg);
-  }
-  .pools .row > [data-label] .pointsPill {
-    align-self: flex-start;
-  }
-  .pools .row > .depositBt,
-  .pools .row > .right:not([data-label]) {
-    grid-column: 1 / -1;
-    justify-self: start;
-  }
-  .pools .row > .depositBt {
-    margin-top: 2px;
+  .pools .depositBt {
+    padding: 7px 12px;
   }
   /* One column: a 300px sidebar beside a chart inside 280px leaves neither
      readable. Stats go under the chart rather than above it, because the chart
