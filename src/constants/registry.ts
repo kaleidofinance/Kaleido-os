@@ -397,6 +397,13 @@ export const TOKENS: Record<number, TokenEntry[]> = {
     },
     {
       chainId: 1,
+      address: "0x6985884C4392D348587B19cb9eAAf157F13271cd",
+      symbol: "ZRO",
+      name: "LayerZero",
+      decimals: 18,
+    },
+    {
+      chainId: 1,
       address: "0x2260FAC5E5542a773Aa44fBCfeDf7C193bc2C599",
       symbol: "WBTC",
       name: "Wrapped BTC",
@@ -456,6 +463,13 @@ export const TOKENS: Record<number, TokenEntry[]> = {
       decimals: 18,
       tags: ["stablecoin"],
     },
+    {
+      chainId: 8453,
+      address: "0x6985884C4392D348587B19cb9eAAf157F13271cd",
+      symbol: "ZRO",
+      name: "LayerZero",
+      decimals: 18,
+    },
   ],
 
   /* -- Base Sepolia. The first target for our own deploy. ---------------- */
@@ -514,6 +528,13 @@ export const TOKENS: Record<number, TokenEntry[]> = {
       name: "First Digital USD",
       decimals: 18,
       tags: ["stablecoin"],
+    },
+    {
+      chainId: 56,
+      address: "0x6985884C4392D348587B19cb9eAAf157F13271cd",
+      symbol: "ZRO",
+      name: "LayerZero",
+      decimals: 18,
     },
     {
       chainId: 56,
@@ -1165,6 +1186,13 @@ export const TOKENS: Record<number, TokenEntry[]> = {
       name: "Tether USD",
       decimals: 6,
       tags: ["stablecoin"],
+    },
+    {
+      chainId: 42161,
+      address: "0x6985884C4392D348587B19cb9eAAf157F13271cd",
+      symbol: "ZRO",
+      name: "LayerZero",
+      decimals: 18,
     },
   ],
 

@@ -3615,14 +3615,27 @@ function parseBridge(
   let toAsset: string | undefined;
   if (destPhrase && ctx.isChain && !ctx.isChain(destPhrase)) {
     const parts = destPhrase.split(/\s+/);
-    if (parts.length >= 2) {
+    const isTokenWord = (w: string) =>
+      /^[a-z][a-z0-9.]*$/.test(w) &&
+      !NEVER_A_TOKEN.has(w) &&
+      !STRAY_FILLERS.has(w);
+
+    // Form A: "<token> on <chain>" — e.g. "bridge 1 USDC from BSC to ZRO on Base"
+    const onIdx = parts.indexOf("on");
+    if (onIdx === 1 && parts.length >= 3) {
+      const tok = parts[0];
+      const chainCandidate = parts.slice(2).join(" ");
+      if (isTokenWord(tok) && ctx.isChain(chainCandidate)) {
+        toChain = chainCandidate;
+        toAsset = tok;
+      }
+    }
+
+    // Form B: "<chain> <token>" — e.g. "bridge 10 BNB to arc usdc"
+    if (!toAsset && parts.length >= 2) {
       const last = parts[parts.length - 1];
       const prefix = parts.slice(0, -1).join(" ");
-      const looksToken =
-        /^[a-z][a-z0-9.]*$/.test(last) &&
-        !NEVER_A_TOKEN.has(last) &&
-        !STRAY_FILLERS.has(last);
-      if (looksToken && ctx.isChain(prefix)) {
+      if (isTokenWord(last) && ctx.isChain(prefix)) {
         toChain = prefix;
         toAsset = last;
       }
