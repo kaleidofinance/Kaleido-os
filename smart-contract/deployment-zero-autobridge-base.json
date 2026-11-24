@@ -1,0 +1,12 @@
+{
+  "contract": "ZeroAutoBridge",
+  "network": "base",
+  "chainId": 8453,
+  "address": "0x4b8F2CC0272250Fb8c219a85c10a0FDe71F4b382",
+  "txHash": "0x941487e27fbb685586dbe589344aae5fa0b79b1d19444bfa0c39945b7b2b0693",
+  "zroOft": "0x6985884C4392D348587B19cb9eAAf157F13271cd",
+  "dstEid": 33002,
+  "feeRecipient": "0x28b7b3dc96e5b2C6047D7Ad9b05Fd9E2FC7E8955",
+  "feeBps": 25,
+  "deployedAt": "2026-11-24T16:43:19.861Z"
+}

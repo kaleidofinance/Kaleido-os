@@ -10,7 +10,7 @@ export const ZERO_LAUNCH_DATE = "Nov 30";
 export const ZERO_FEE_BPS = 25; // 0.25%
 
 /** Canonical $ZRO LayerZero V2 OFT contract (same address across all 7 EVM chains). */
-export const ZRO_OFT_ADDRESS = "0x6985884C4392D348587b19cb9eAAf157f13271cd";
+export const ZRO_OFT_ADDRESS = "0x6985884C4392D348587B19cb9eAAf157F13271cd";
 
 /** Verified peer address on Zero (dstEid 33002) returned by `peers(33002)`. */
 export const ZERO_OFT_PEER =
@@ -196,11 +196,18 @@ export const ZERO_SOURCE_BY_ID: Record<number, ZeroSourceChain> = Object.fromEnt
 );
 
 /**
- * Per-chain deployed ZeroAutoBridge contract addresses.
- * Populated via env vars once deployed with `scripts/deploy-zero-autobridge.js`.
+ * Per-chain deployed ownerless ZeroAutoBridge contract addresses.
+ * Base, Arbitrum, and BNB are live on mainnet (2026-11-24); env vars can
+ * override or add additional chains without a code edit.
  */
+const DEFAULT_ZERO_AUTOBRIDGE: Record<number, string> = {
+  8453: "0x4b8F2CC0272250Fb8c219a85c10a0FDe71F4b382",
+  42161: "0xd27eB978D2a018F5E23FA2D2CA4a70122A3a669C",
+  56: "0x36EB9A3D87f9cEd18cBcfBF35836762f840149C9",
+};
+
 export function getZeroAutoBridgeAddress(chainId: number): string | null {
-  const map: Record<number, string | undefined> = {
+  const envMap: Record<number, string | undefined> = {
     1: process.env.NEXT_PUBLIC_ZERO_AUTOBRIDGE_ETHEREUM,
     8453: process.env.NEXT_PUBLIC_ZERO_AUTOBRIDGE_BASE,
     42161: process.env.NEXT_PUBLIC_ZERO_AUTOBRIDGE_ARBITRUM,
@@ -209,7 +216,7 @@ export function getZeroAutoBridgeAddress(chainId: number): string | null {
     137: process.env.NEXT_PUBLIC_ZERO_AUTOBRIDGE_POLYGON,
     43114: process.env.NEXT_PUBLIC_ZERO_AUTOBRIDGE_AVALANCHE,
   };
-  const raw = map[chainId]?.trim();
+  const raw = (envMap[chainId] || DEFAULT_ZERO_AUTOBRIDGE[chainId])?.trim();
   if (!raw || !ethers.isAddress(raw) || raw === ethers.ZeroAddress) return null;
   return raw;
 }

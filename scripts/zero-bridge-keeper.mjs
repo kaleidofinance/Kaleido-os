@@ -18,7 +18,7 @@
 
 import { ethers } from "ethers";
 
-const ZRO_OFT = "0x6985884C4392D348587b19cb9eAAf157f13271cd";
+const ZRO_OFT = "0x6985884C4392D348587B19cb9eAAf157F13271cd";
 const ZERO_DST_EID = 33002;
 const POLL_MS = Number(process.env.ZERO_KEEPER_POLL_MS || "3000");
 const BATCH_SIZE = Number(process.env.ZERO_KEEPER_BATCH_SIZE || "25");
@@ -43,13 +43,17 @@ const CHAINS = [
     name: "Base",
     chainId: 8453,
     rpc: process.env.BASE_RPC_URL || "https://mainnet.base.org",
-    contract: process.env.NEXT_PUBLIC_ZERO_AUTOBRIDGE_BASE,
+    contract:
+      process.env.NEXT_PUBLIC_ZERO_AUTOBRIDGE_BASE ||
+      "0x4b8F2CC0272250Fb8c219a85c10a0FDe71F4b382",
   },
   {
     name: "Arbitrum",
     chainId: 42161,
     rpc: process.env.ARBITRUM_RPC_URL || "https://arb1.arbitrum.io/rpc",
-    contract: process.env.NEXT_PUBLIC_ZERO_AUTOBRIDGE_ARBITRUM,
+    contract:
+      process.env.NEXT_PUBLIC_ZERO_AUTOBRIDGE_ARBITRUM ||
+      "0xd27eB978D2a018F5E23FA2D2CA4a70122A3a669C",
   },
   {
     name: "Ethereum",
@@ -61,7 +65,9 @@ const CHAINS = [
     name: "BNB",
     chainId: 56,
     rpc: process.env.BSC_RPC_URL || "https://bsc-rpc.publicnode.com",
-    contract: process.env.NEXT_PUBLIC_ZERO_AUTOBRIDGE_BSC,
+    contract:
+      process.env.NEXT_PUBLIC_ZERO_AUTOBRIDGE_BSC ||
+      "0x36EB9A3D87f9cEd18cBcfBF35836762f840149C9",
   },
   {
     name: "Optimism",
@@ -188,7 +194,8 @@ async function checkChain(cfg, privateKey) {
 }
 
 async function main() {
-  const privateKey = process.env.ZERO_KEEPER_PRIVATE_KEY?.trim() || "";
+  const privateKey =
+    (process.env.ZERO_KEEPER_PRIVATE_KEY || process.env.KEEPER_PRIVATE_KEY || "").trim();
   const activeChains = CHAINS.filter(
     (c) => c.contract && ethers.isAddress(c.contract),
   );
