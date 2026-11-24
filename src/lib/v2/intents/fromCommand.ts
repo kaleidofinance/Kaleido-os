@@ -3328,6 +3328,19 @@ function parseSwap(
   tokens: IToken[],
   ctx: ParseContext = {},
 ): ParseResult {
+  /* If the user explicitly named another chain ("swap all my USDT to BNB on BSC
+     chain" while connected to Arc), do not refuse against the connected chain's
+     token list — hand off to Luca's multi-chain planner so it quotes on the
+     named chain and PlanReview auto-switches the wallet at sign time. */
+  const onChain = sendChainPhrase(words, ctx);
+  if (
+    onChain &&
+    ctx.chainName &&
+    normChainName(onChain) !== normChainName(ctx.chainName)
+  ) {
+    return { status: "unknown" };
+  }
+
   /*
    * A bare token address the registry never carried becomes a provisional
    * mention here, so an Argus launch named by address ("buy 0x… with 10 USDC")

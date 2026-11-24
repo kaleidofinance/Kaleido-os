@@ -236,7 +236,8 @@ export const CHAINS: ChainMeta[] = [
     rpcUrls: [
       "https://bsc-rpc.publicnode.com",
       "https://bsc-dataseed.bnbchain.org",
-      "https://rpc.ankr.com/bsc",
+      "https://bsc-dataseed1.defibit.io",
+      "https://1rpc.io/bnb",
     ],
     blockExplorer: { name: "BscScan", url: "https://bscscan.com" },
     iconId: "binance-smart-chain",
