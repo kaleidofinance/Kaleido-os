@@ -1697,6 +1697,14 @@ a.txAction:hover {
     overflow: hidden;
     text-overflow: ellipsis;
   }
+  .pools .pairFee {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
   .pools .depositBt {
     padding: 7px 12px;
   }

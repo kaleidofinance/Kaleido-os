@@ -533,7 +533,7 @@ export default function PoolsPage() {
                             className={s.pairFee}
                             title={`${pool.provider === "synthra" ? "Synthra indexed metadata; execution still requires a fresh best-execution quote" : `Curated ${pool.provider ?? "external"} route`}; metrics from ${pool.metricsSource ?? "dated registry snapshot"}${pool.metricsAsOf ? ` as of ${pool.metricsAsOf}` : ""}`}
                           >
-                            {pool.exchange} · External{" "}
+                            <span>{pool.exchange}</span>
                             <ChainTag chainId={pool.chainId} />
                           </div>
                         </div>
