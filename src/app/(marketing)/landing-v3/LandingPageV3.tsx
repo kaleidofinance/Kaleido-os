@@ -19,6 +19,7 @@ import styles from "./page.module.css";
 
 const networks = [
   { id: "arc", name: "Arc" },
+  { id: "zero", name: "Zero · Nov 30" },
   { id: "elysium", name: "Elysium" },
   { id: "robinhood", name: "Robinhood Chain" },
   { id: "base", name: "Base" },
@@ -168,6 +169,10 @@ export default function LandingPageV3() {
                   Open Luca
                   <LuArrowUpRight size={16} aria-hidden="true" />
                 </a>
+                <a className={`${styles.btn} ${styles.btnGhost}`} href={`${app}/trade/bridge`}>
+                  <ChainIcon id="zero" size={16} />
+                  Bridge to Zero
+                </a>
                 <a className={`${styles.btn} ${styles.btnGhost}`} href={app}>
                   Launch markets
                 </a>
@@ -185,7 +190,7 @@ export default function LandingPageV3() {
               </div>
               <div className={styles.datumCell}>
                 <span className={styles.datumKey}>Networks</span>
-                <span className={styles.datumVal}>5 live mainnets</span>
+                <span className={styles.datumVal}>5 live + Zero (Nov 30)</span>
               </div>
               <div className={styles.datumCell}>
                 <span className={styles.datumKey}>Liquidity</span>
