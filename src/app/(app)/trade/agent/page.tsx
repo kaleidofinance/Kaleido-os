@@ -2109,7 +2109,7 @@ export default function AgentPage() {
       log("model");
 
       let quotaAuth: { quotaSignature: string; quotaSignedAt: number } | null = null;
-      if (address && activeAccount?.signMessage) {
+      if (address) {
         const key = `luca:quotaSession:${address.toLowerCase()}`;
         try {
           const cached = sessionStorage.getItem(key);
@@ -2131,25 +2131,6 @@ export default function AgentPage() {
           }
         } catch {
           /* ignore storage read errors */
-        }
-        if (!quotaAuth) {
-          try {
-            const signedAt = Date.now();
-            const signature = await activeAccount.signMessage({
-              message: quotaSessionMessage(address, signedAt),
-            });
-            quotaAuth = { quotaSignature: signature, quotaSignedAt: signedAt };
-            try {
-              sessionStorage.setItem(
-                key,
-                JSON.stringify({ signature, signedAt }),
-              );
-            } catch {
-              /* ignore storage write errors */
-            }
-          } catch {
-            /* User declined signature or wallet unsupported; proceed unauthenticated */
-          }
         }
       }
 

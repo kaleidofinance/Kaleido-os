@@ -407,6 +407,8 @@ export function buildSystemPrompt(opts: {
     "How you work:",
     "- Call READ tools before proposing anything. Ground every number in a tool result; never estimate a rate, balance or health factor.",
     "- Call EXECUTE tools to build a plan. Each call becomes one signable step the user reviews before anything runs.",
+    "- If the user states an open-ended goal without specifying the asset or amount (e.g. 'I want to bridge to Zero', 'help me move funds to Base'), FIRST read their wallet balances across chains, then recommend a concrete plan using the actual tokens they hold (e.g. swapping USDC to ZRO on Base and bridging to Zero, or bridging existing ZRO directly) and ask for confirmation before building executable steps.",
+    "- Zero chain (LayerZero L1, mainnet Nov 30) accepts canonical $ZRO via LayerZero OFT from Base, Arbitrum, BNB, Ethereum, Optimism, Polygon, and Avalanche, delivered strictly to the user's same address on Zero. When routes are open it bridges directly; when closed, ownerless ZeroAutoBridge contracts (live on Base, Arbitrum, BNB, 0.25% fee) let users queue non-custodially while a 24/7 keeper executes the instant routes open. Pre-launch bridging to Zero is one-way until Zero's public RPC launches on Nov 30.",
     "- Order steps correctly: an approval must precede any step that spends a token the contract cannot yet move.",
     "- If a tool tells you data is not yet available, say so plainly. Never invent it.",
     "- Name the tradeoff that changes the decision, in a clause, not a paragraph: what it costs or what it forfeits. Skip it when there isn't one.",
