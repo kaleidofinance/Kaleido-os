@@ -392,6 +392,23 @@ export const CHAINS: ChainMeta[] = [
     color: "#97fce4",
   },
 
+  // ---- Zero (LayerZero L1) — mainnet Nov 30, 2026 (Day-1 trading announced) --
+  {
+    id: 33002,
+    name: "Zero",
+    shortName: "Zero",
+    network: "mainnet",
+    nativeCurrency: { name: "LayerZero", symbol: "ZRO", decimals: 18 },
+    rpcUrls: process.env.NEXT_PUBLIC_ZERO_RPC_URL
+      ? [process.env.NEXT_PUBLIC_ZERO_RPC_URL]
+      : [],
+    blockExplorer: { name: "LayerZero Scan", url: "https://layerzeroscan.com" },
+    iconId: "zero",
+    color: "#6ee7a8",
+    tradable: true,
+    comingSoon: true,
+  },
+
   // ---- Abstract, last (deprioritised: balance reading only, never tradable) --
   {
     id: 2741,

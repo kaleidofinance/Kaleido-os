@@ -53,6 +53,7 @@ const UNIFORM_DECIMALS: Record<string, number> = {
   BNB: 18,
   HYPE: 18,
   WHYPE: 18,
+  ZRO: 18,
 };
 
 export interface BridgeQuote {
@@ -96,6 +97,9 @@ const CHAIN_ALIASES: Record<string, number> = {
   hyperevm: 999,
   "hyper evm": 999,
   "hyperliquid evm": 999,
+  zero: 33002,
+  "zero chain": 33002,
+  zerointerop: 33002,
 };
 
 /**

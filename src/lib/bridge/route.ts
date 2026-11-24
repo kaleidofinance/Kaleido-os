@@ -10,6 +10,15 @@ import {
 import { resolveCctpFastFee } from "@/lib/bridge/cctpFast";
 import { getSynthraExternalExecution } from "@/lib/swap/synthra";
 import { isKnownSynthraExternalSpender } from "@/lib/swap/synthraExternalSpenders";
+import {
+  ZERO_AUTOBRIDGE_ABI,
+  ZERO_CHAIN_ID,
+  ZERO_SOURCE_BY_ID,
+  ZRO_OFT_ABI,
+  ZRO_OFT_ADDRESS,
+  buildZeroSendParam,
+  getZeroAutoBridgeAddress,
+} from "@/lib/bridge/zero";
 import type {
   BridgeRoute,
   BridgeRouteAlternative,
@@ -106,6 +115,9 @@ export function isKnownBridgeAddress(
 ): boolean {
   if (!address) return false;
   const lower = address.toLowerCase();
+  if (lower === ZRO_OFT_ADDRESS.toLowerCase()) return true;
+  const zeroAb = getZeroAutoBridgeAddress(fromChainId);
+  if (zeroAb && zeroAb.toLowerCase() === lower) return true;
   const orbit = ORBIT_CORRIDORS[fromChainId];
   if (
     orbit &&
@@ -256,13 +268,18 @@ const KNOWN_BRIDGE_SPENDERS = [
  */
 export function isKnownBridgeSpender(address: string): boolean {
   const lower = (address || "").toLowerCase();
+  const isZeroAutoBridge = Object.keys(ZERO_SOURCE_BY_ID).some((cid) => {
+    const ab = getZeroAutoBridgeAddress(Number(cid));
+    return ab ? ab.toLowerCase() === lower : false;
+  });
   return (
     Boolean(address) &&
     (KNOWN_BRIDGE_SPENDERS.some((r) => r.toLowerCase() === lower) ||
       // CCTP's TokenMessengerV2 is the ERC20 leg's spender AND its call target;
       // one vetted fixed address on every V2 chain, read here so the approve
       // rule and the bridge rule's spender===to check both admit it.
-      isKnownCctpTarget(address))
+      isKnownCctpTarget(address) ||
+      isZeroAutoBridge)
   );
 }
 
@@ -783,6 +800,121 @@ export async function resolveBridgeRoute(
     if (instant && "error" in instant) return instant;
     return {
       error: `No executable route for ${asset} to ${dest.shortName} right now. Kaleido can quote one via Relay or LI.FI for you to complete with the provider.`,
+    };
+  }
+
+  // 0b) Zero mainnet (chainId 33002, LayerZero V2 dstEid 33002) — canonical
+  //     $ZRO OFT bridge when the LayerZero window is OPEN, or ownerless
+  //     ZeroAutoBridge queue (`enroll`) when the window is CLOSED.
+  if (dest.id === ZERO_CHAIN_ID) {
+    const srcZero = ZERO_SOURCE_BY_ID[fromChainId];
+    if (!srcZero) {
+      return {
+        error: `Bridging to Zero is supported from Base, Arbitrum, Ethereum, BNB Chain, Optimism, Polygon, and Avalanche. Switch to one of those networks first.`,
+      };
+    }
+    if (thirdParty) {
+      return {
+        error: `Pre-launch Zero bridging delivers strictly to your own connected address on Zero.`,
+      };
+    }
+    if (asset.toUpperCase() !== "ZRO") {
+      return {
+        error: `Zero accepts canonical $ZRO via LayerZero OFT. Swap ${amount} ${asset} to ZRO on ${srcZero.shortName} first (or use /bridge for 1-click swap + bridge to Zero).`,
+      };
+    }
+    if (!ethers.isAddress(userAddress)) {
+      return {
+        error: `Connect your wallet first — bridged $ZRO lands at your same address on Zero.`,
+      };
+    }
+
+    const amountLD = BigInt(units);
+    const sendParam = buildZeroSendParam(userAddress, amountLD);
+    const autoBridgeAddr = getZeroAutoBridgeAddress(fromChainId);
+
+    // Probe LayerZero quoteSend on the source chain
+    let nativeFee: bigint | null = null;
+    for (const rpc of srcZero.rpcUrls) {
+      try {
+        const provider = new ethers.JsonRpcProvider(rpc, fromChainId, {
+          staticNetwork: true,
+        });
+        const oft = new ethers.Contract(ZRO_OFT_ADDRESS, ZRO_OFT_ABI, provider);
+        const mf = await Promise.race([
+          oft.quoteSend(sendParam, false),
+          new Promise<never>((_, rej) => setTimeout(() => rej(new Error("timeout")), 4500)),
+        ]);
+        nativeFee = BigInt(mf.nativeFee ?? mf[0]);
+        break;
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        if (/revert|CALL_EXCEPTION|execution reverted/i.test(msg)) {
+          nativeFee = null; // RPC answered: route is CLOSED
+          break;
+        }
+      }
+    }
+
+    if (nativeFee !== null) {
+      // Route OPEN: emit direct bridge calldata
+      if (autoBridgeAddr) {
+        const data = new ethers.Interface(ZERO_AUTOBRIDGE_ABI).encodeFunctionData(
+          "bridgeDirect",
+          [amountLD],
+        );
+        return {
+          to: autoBridgeAddr,
+          data,
+          value: nativeFee.toString(),
+          toChainId: ZERO_CHAIN_ID,
+          toChainName: "Zero",
+          provider: "canonical",
+          etaSeconds: 660,
+          spender: autoBridgeAddr,
+        };
+      }
+      const data = new ethers.Interface(ZRO_OFT_ABI).encodeFunctionData("send", [
+        sendParam,
+        { nativeFee, lzTokenFee: 0n },
+        userAddress,
+      ]);
+      return {
+        to: ZRO_OFT_ADDRESS,
+        data,
+        value: nativeFee.toString(),
+        toChainId: ZERO_CHAIN_ID,
+        toChainName: "Zero",
+        provider: "canonical",
+        etaSeconds: 660,
+      };
+    }
+
+    // Route CLOSED: if ZeroAutoBridge is deployed, emit ownerless Auto-Queue enroll()!
+    if (autoBridgeAddr) {
+      const depositWei = ethers.parseEther(srcZero.defaultQueueDeposit);
+      const maxNativeFeeWei = ethers.parseEther(srcZero.defaultMaxNativeFee);
+      const validUntil = Math.floor(Date.now() / 1000) + 14 * 86400;
+      const data = new ethers.Interface(ZERO_AUTOBRIDGE_ABI).encodeFunctionData("enroll", [
+        amountLD,
+        maxNativeFeeWei,
+        0n,
+        validUntil,
+      ]);
+      return {
+        to: autoBridgeAddr,
+        data,
+        value: depositWei.toString(),
+        toChainId: ZERO_CHAIN_ID,
+        toChainName: "Zero",
+        provider: "canonical",
+        etaSeconds: null,
+        spender: autoBridgeAddr,
+      };
+    }
+
+    return {
+      error: `LayerZero's ${srcZero.shortName} → Zero route (dstEid 33002) is currently closed. Once ZeroAutoBridge is deployed on ${srcZero.shortName}, Luca can enroll you in the non-custodial auto-bridge queue automatically — or monitor live route windows at /bridge.`,
     };
   }
 

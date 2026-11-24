@@ -4,6 +4,7 @@ import NetworkAbstract from "@web3icons/react/icons/networks/NetworkAbstract";
 import NetworkAbstractSepolia from "@web3icons/react/icons/networks/NetworkAbstractSepolia";
 import NetworkArbitrumOne from "@web3icons/react/icons/networks/NetworkArbitrumOne";
 import NetworkArc from "@web3icons/react/icons/networks/NetworkArc";
+import NetworkAvalanche from "@web3icons/react/icons/networks/NetworkAvalanche";
 import NetworkBase from "@web3icons/react/icons/networks/NetworkBase";
 import NetworkBaseSepolia from "@web3icons/react/icons/networks/NetworkBaseSepolia";
 import NetworkBinanceSmartChain from "@web3icons/react/icons/networks/NetworkBinanceSmartChain";
@@ -64,20 +65,69 @@ function NetworkElysium({
   );
 }
 
+function NetworkZero({
+  size = 16,
+  className,
+}: {
+  size?: string | number;
+  variant?: "branded" | "mono" | "background";
+  className?: string;
+}) {
+  return (
+    <img
+      src="/icons/zero.svg"
+      width={size}
+      height={size}
+      className={className}
+      alt="Zero"
+      style={{ borderRadius: "50%", display: "inline-block", verticalAlign: "middle" }}
+    />
+  );
+}
+
+function NetworkOptimism({
+  size = 16,
+  className,
+}: {
+  size?: string | number;
+  variant?: "branded" | "mono" | "background";
+  className?: string;
+}) {
+  return (
+    <svg
+      width={size}
+      height={size}
+      viewBox="0 0 32 32"
+      fill="none"
+      className={className}
+      style={{ display: "inline-block", verticalAlign: "middle", borderRadius: "50%" }}
+    >
+      <circle cx="16" cy="16" r="16" fill="#FF0420" />
+      <path
+        d="M11.6 20.6c-1.7 0-3-.5-3.8-1.4-.8-.9-1.1-2.1-.9-3.6.2-1.5.9-2.8 1.9-3.7 1.1-.9 2.4-1.4 4-1.4 1.7 0 2.9.5 3.7 1.4.8.9 1.1 2.1.9 3.6-.2 1.5-.9 2.8-1.9 3.7-1 .9-2.3 1.4-3.9 1.4zm.4-2.4c.7 0 1.4-.2 1.9-.7.5-.5.8-1.2 1-2.1.1-.9 0-1.6-.4-2-.4-.5-1-.7-1.7-.7-.8 0-1.4.2-1.9.7-.5.5-.8 1.2-1 2.1-.1.9 0 1.5.4 2 .4.5 1 .7 1.7.7zm6.1 2.2l1.6-9.7h4.2c1.2 0 2.1.3 2.7.9.6.6.9 1.4.7 2.4-.2 1.1-.7 1.9-1.5 2.5-.8.6-1.9.9-3.1.9h-1.6l-.5 3h-2.5zm3.4-5.1h1.3c.6 0 1-.1 1.4-.4.3-.3.5-.6.6-1.1.1-.4 0-.8-.2-1-.2-.2-.6-.4-1.1-.4h-1.4l-.6 3z"
+        fill="#FFFFFF"
+      />
+    </svg>
+  );
+}
+
 const ICONS: Record<string, IconComponent> = {
   abstract: NetworkAbstract,
   "abstract-sepolia": NetworkAbstractSepolia,
   "arbitrum-one": NetworkArbitrumOne,
   arc: NetworkArc,
+  avalanche: NetworkAvalanche,
   base: NetworkBase,
   "base-sepolia": NetworkBaseSepolia,
   "binance-smart-chain": NetworkBinanceSmartChain,
   "binance-smart-chain-testnet": NetworkBinanceSmartChainTestnet,
   elysium: NetworkElysium as unknown as IconComponent,
   ethereum: NetworkEthereum,
+  optimism: NetworkOptimism as unknown as IconComponent,
   polygon: NetworkPolygon,
   robinhood: NetworkRobinhood,
   sepolia: NetworkSepolia,
+  zero: NetworkZero as unknown as IconComponent,
 };
 
 export default function ChainIcon({

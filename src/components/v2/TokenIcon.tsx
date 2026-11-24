@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
 
+import TokenAVAX from "@web3icons/react/icons/tokens/TokenAVAX";
 import TokenBNB from "@web3icons/react/icons/tokens/TokenBNB";
 import TokenBTC from "@web3icons/react/icons/tokens/TokenBTC";
 import TokenDAI from "@web3icons/react/icons/tokens/TokenDAI";
@@ -59,6 +60,7 @@ import m from "./TokenIcon.module.css";
 type IconComponent = typeof TokenETH;
 
 const ICONS: Record<string, IconComponent> = {
+  AVAX: TokenAVAX,
   BNB: TokenBNB,
   BTC: TokenBTC,
   DAI: TokenDAI,
@@ -143,6 +145,7 @@ const RASTER: Record<string, string> = {
   PI: "/tokens/pi.webp",
   TOLLY: "/tokens/tolly.png",
   XNAN: "/tokens/xnan.webp",
+  ZRO: "/icons/zero.svg",
 };
 
 /** True when we can draw a real logo. Callers use it to skip the monogram. */

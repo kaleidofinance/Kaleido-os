@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo } from "react";
+import { useRouter } from "next/navigation";
 import {
   useActiveWallet,
   useActiveWalletChain,
@@ -55,6 +56,7 @@ interface NetworkSelectorProps {
 const NETWORK_DISPLAY_ORDER: Record<number, number> = {
   5042: 10,
   5042002: 10,
+  33002: 12,
   99901: 15,
   99801: 15,
   4663: 20,
@@ -70,21 +72,24 @@ function ChainRow({
   active,
   comingSoon,
   onSelect,
+  onOpenZeroBridge,
 }: {
   meta: ChainMeta;
   active: boolean;
   comingSoon: boolean;
   onSelect: (m: ChainMeta) => void;
+  onOpenZeroBridge?: () => void;
 }) {
   const hasExternalVenue =
     fallbackVenues(meta.id).length > 0 || meta.id === 99901;
+  const isZeroPrelaunch = meta.id === 33002 && comingSoon;
 
   return (
     <button
-      className={`${s.row} ${comingSoon ? s.rowSoon : ""}`}
-      onClick={() => onSelect(meta)}
-      disabled={active || comingSoon}
-      aria-disabled={active || comingSoon}
+      className={`${s.row} ${comingSoon && !isZeroPrelaunch ? s.rowSoon : ""}`}
+      onClick={() => (isZeroPrelaunch ? onOpenZeroBridge?.() : onSelect(meta))}
+      disabled={active || (comingSoon && !isZeroPrelaunch)}
+      aria-disabled={active || (comingSoon && !isZeroPrelaunch)}
     >
       <span className={s.tki}>
         <ChainIcon
@@ -97,19 +102,23 @@ function ChainRow({
       <div className={s.rb}>
         <div className={s.rn}>{meta.name}</div>
         <div className={s.rs}>
-          {comingSoon
-            ? "Coming soon"
-            : isDeployed(meta.id) || hasExternalVenue
-              ? "Trading live"
-              : hasSwaps(meta.id) || hasKyberSwap(meta.id)
-                ? "Swaps live"
-                : meta.tradable
-                  ? "Balances only · deploy pending"
-                  : "Balances only"}
+          {isZeroPrelaunch
+            ? "Trading Day 1 · Nov 30 · Bridge live"
+            : comingSoon
+              ? "Coming soon"
+              : isDeployed(meta.id) || hasExternalVenue
+                ? "Trading live"
+                : hasSwaps(meta.id) || hasKyberSwap(meta.id)
+                  ? "Swaps live"
+                  : meta.tradable
+                    ? "Balances only · deploy pending"
+                    : "Balances only"}
         </div>
       </div>
       {active ? (
         <span className={s.current}>Connected</span>
+      ) : isZeroPrelaunch ? (
+        <span className={s.current}>Bridge →</span>
       ) : comingSoon ? (
         <span className={s.soon}>Coming soon</span>
       ) : null}
@@ -121,6 +130,7 @@ export default function NetworkSelector({
   open,
   onClose,
 }: NetworkSelectorProps) {
+  const router = useRouter();
   const activeChain = useActiveWalletChain();
   const switchChain = useSwitchActiveWalletChain();
   const wallet = useActiveWallet();
@@ -247,6 +257,10 @@ export default function NetworkSelector({
                   active={activeChain?.id === m.id}
                   comingSoon={isComingSoon(m.id)}
                   onSelect={handleSelect}
+                  onOpenZeroBridge={() => {
+                    onClose();
+                    router.push("/trade/bridge");
+                  }}
                 />
               ))}
             </div>

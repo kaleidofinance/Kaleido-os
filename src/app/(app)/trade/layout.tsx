@@ -27,9 +27,8 @@ import s from "./trade.module.css";
 const TABS = [
   { href: "/trade/agent", label: "Agent" },
   { href: "/trade/swap", label: "Swap" },
+  { href: "/trade/bridge", label: "Bridge" },
   { href: "/trade/limit", label: "Limit" },
-  { href: "/trade/buy", label: "Buy" },
-  { href: "/trade/sell", label: "Sell" },
 ];
 
 export default function TradeLayout({ children }: { children: ReactNode }) {
