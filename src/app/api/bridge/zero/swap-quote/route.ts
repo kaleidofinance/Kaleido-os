@@ -72,6 +72,8 @@ export async function POST(req: NextRequest) {
       tool: String(data.tool || "LI.FI"),
       toAmount: String(estimate.toAmount || "0"),
       toAmountMin: String(estimate.toAmountMin || "0"),
+      fromAmountUSD: estimate.fromAmountUSD ? String(estimate.fromAmountUSD) : null,
+      toAmountUSD: estimate.toAmountUSD ? String(estimate.toAmountUSD) : null,
       approvalAddress,
       transactionRequest: {
         to: String(txReq.to || ""),

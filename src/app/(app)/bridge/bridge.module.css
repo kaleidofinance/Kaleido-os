@@ -287,3 +287,50 @@
   font-size: var(--k-fs-sm);
   color: var(--k-t3);
 }
+
+.searchWrap {
+  padding-bottom: 10px;
+}
+
+.searchInput {
+  width: 100%;
+  background: var(--k-glass-deep);
+  box-shadow: var(--k-shadow-inset);
+  border: 1px solid var(--k-line);
+  border-radius: var(--k-r-md);
+  padding: 10px 12px;
+  color: var(--k-t1);
+  font: inherit;
+  font-size: var(--k-fs-sm);
+  outline: none;
+}
+
+.searchInput:focus {
+  border-color: var(--k-brand);
+}
+
+.searchInput::placeholder {
+  color: var(--k-t3);
+}
+
+.tokBalCol {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 2px;
+  margin-left: auto;
+  flex: none;
+}
+
+.tokBalVal {
+  font-size: var(--k-fs-sm);
+  font-weight: var(--k-fw-med);
+  font-variant-numeric: tabular-nums;
+  color: var(--k-t1);
+}
+
+.tokBalUsd {
+  font-size: var(--k-fs-xs);
+  font-variant-numeric: tabular-nums;
+  color: var(--k-t3);
+}

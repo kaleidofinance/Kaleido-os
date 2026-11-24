@@ -42,12 +42,77 @@ interface CachedStatus {
     feeBps: number;
     launchDate: string;
     openCount: number;
+    pricesUsd: Record<string, number>;
     chains: ZeroRouteChainStatus[];
   };
 }
 
 let cache: CachedStatus | null = null;
+let priceCache: { ts: number; prices: Record<string, number> } | null = null;
 const CACHE_TTL_MS = 10_000;
+const PRICE_TTL_MS = 60_000;
+
+const LLAMA_COINS: Record<string, string> = {
+  ZRO: "ethereum:0x6985884C4392D348587B19cb9eAAf157F13271cd",
+  ETH: "coingecko:ethereum",
+  BNB: "coingecko:binancecoin",
+  POL: "coingecko:polygon-ecosystem-token",
+  AVAX: "coingecko:avalanche-2",
+  WBTC: "coingecko:wrapped-bitcoin",
+  ARB: "coingecko:arbitrum",
+  OP: "coingecko:optimism",
+  AERO: "base:0x940181a94A35A4569E4529A3CDfB74e38FD98631",
+  CAKE: "bsc:0x0E09FaBB73Bd3Ade0a17ECC321fD13a19e81cE82",
+  LINK: "coingecko:chainlink",
+};
+
+async function fetchZeroPricesUsd(): Promise<Record<string, number>> {
+  const now = Date.now();
+  if (priceCache && now - priceCache.ts < PRICE_TTL_MS) {
+    return priceCache.prices;
+  }
+  const prices: Record<string, number> = {
+    USDC: 1,
+    USDT: 1,
+    DAI: 1,
+    FDUSD: 1,
+    USD1: 1,
+    USDE: 1,
+  };
+  try {
+    const query = Object.values(LLAMA_COINS).join(",");
+    const res = await fetch(`https://coins.llama.fi/prices/current/${query}`, {
+      headers: { Accept: "application/json" },
+      cache: "no-store",
+    });
+    if (res.ok) {
+      const json = (await res.json()) as {
+        coins?: Record<string, { price?: number }>;
+      };
+      const coins = json?.coins ?? {};
+      for (const [sym, key] of Object.entries(LLAMA_COINS)) {
+        const p = coins[key]?.price;
+        if (typeof p === "number" && Number.isFinite(p) && p > 0) {
+          prices[sym] = p;
+        }
+      }
+      // Mirror wrapped / pegged variants
+      if (prices.ETH) prices.WETH = prices.ETH;
+      if (prices.BNB) prices.WBNB = prices.BNB;
+      if (prices.AVAX) prices.WAVAX = prices.AVAX;
+      if (prices.WBTC) {
+        prices.CBBTC = prices.WBTC;
+        prices.BTCB = prices.WBTC;
+        prices["BTC.B"] = prices.WBTC;
+      }
+    }
+  } catch {
+    /* keep stablecoin defaults + stale cache if any */
+    if (priceCache) return priceCache.prices;
+  }
+  priceCache = { ts: now, prices };
+  return prices;
+}
 const PROBE_ADDRESS = "0x000000000000000000000000000000000000dEaD";
 const PROBE_AMOUNT = ethers.parseEther("1");
 
@@ -151,7 +216,10 @@ export async function GET() {
     });
   }
 
-  const chains = await Promise.all(ZERO_SOURCE_CHAINS.map(probeChain));
+  const [chains, pricesUsd] = await Promise.all([
+    Promise.all(ZERO_SOURCE_CHAINS.map(probeChain)),
+    fetchZeroPricesUsd(),
+  ]);
   const openCount = chains.filter((c) => c.open).length;
 
   const payload = {
@@ -163,6 +231,7 @@ export async function GET() {
     feeBps: ZERO_FEE_BPS,
     launchDate: ZERO_LAUNCH_DATE,
     openCount,
+    pricesUsd,
     chains,
   };
 

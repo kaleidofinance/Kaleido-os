@@ -17,6 +17,7 @@ import Portal from "@/components/v2/Portal";
 import m from "@/components/v2/NetworkSelector.module.css";
 import { client } from "@/config/client";
 import { WALLETS } from "@/config/wallets";
+import { getTokens } from "@/constants/registry";
 import {
   ZERO_AUTOBRIDGE_ABI,
   ZERO_CHAIN_ID,
@@ -53,7 +54,16 @@ interface StatusResponse {
   feeBps: number;
   launchDate: string;
   openCount: number;
+  pricesUsd?: Record<string, number>;
   chains: ChainStatus[];
+}
+
+interface BridgeTokenItem {
+  symbol: string;
+  name: string;
+  address: string;
+  decimals: number;
+  isNative?: boolean;
 }
 
 interface HistoryResponse {
@@ -83,6 +93,8 @@ interface SwapQuote {
   tool: string;
   toAmount: string;
   toAmountMin: string;
+  fromAmountUSD?: string | null;
+  toAmountUSD?: string | null;
   approvalAddress: string | null;
   transactionRequest: {
     to: string;
@@ -106,7 +118,28 @@ const ERC20_MIN_ABI = [
   "function balanceOf(address) view returns (uint256)",
   "function allowance(address,address) view returns (uint256)",
   "function approve(address,uint256) returns (bool)",
+  "function symbol() view returns (string)",
+  "function name() view returns (string)",
+  "function decimals() view returns (uint8)",
 ];
+
+function formatUsd(val: number | null | undefined): string | null {
+  if (val == null || !Number.isFinite(val) || val <= 0) return null;
+  if (val < 0.01) return "<$0.01";
+  return `$${val.toLocaleString("en-US", {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  })}`;
+}
+
+function formatBal(raw: bigint, decimals: number): string {
+  if (raw <= 0n) return "0";
+  const num = Number(ethers.formatUnits(raw, decimals));
+  if (!Number.isFinite(num) || num <= 0) return "0";
+  if (num < 0.0001) return "<0.0001";
+  if (num >= 1000) return num.toLocaleString("en-US", { maximumFractionDigits: 2 });
+  return num.toFixed(4).replace(/\.?0+$/, "");
+}
 
 async function getBrowserSigner(): Promise<ethers.Signer> {
   const eth = (window as unknown as { ethereum?: ethers.Eip1193Provider }).ethereum;
@@ -132,16 +165,51 @@ export default function TradeBridgePage() {
     () => ZERO_SOURCE_BY_ID[selectedChainId] ?? ZERO_SOURCE_CHAINS[0],
     [selectedChainId],
   );
+  const [customTokens, setCustomTokens] = useState<Record<number, BridgeTokenItem[]>>({});
+  const [tokenSearch, setTokenSearch] = useState<string>("");
+  const [loadingCustomToken, setLoadingCustomToken] = useState<boolean>(false);
+
+  /** Full deduplicated token list: popular tokens + Kaleido registry + user-pasted ERC-20s */
+  const availableTokens = useMemo<BridgeTokenItem[]>(() => {
+    const seen = new Set<string>();
+    const out: BridgeTokenItem[] = [];
+    const push = (tok: BridgeTokenItem) => {
+      const k = tok.isNative ? "native" : tok.address.toLowerCase();
+      if (seen.has(k)) return;
+      seen.add(k);
+      out.push(tok);
+    };
+    for (const tok of sourceChain.popularTokens) push(tok);
+    for (const reg of getTokens(selectedChainId)) {
+      push({
+        symbol: reg.symbol,
+        name: reg.name,
+        address: reg.isNative
+          ? "0x0000000000000000000000000000000000000000"
+          : reg.address,
+        decimals: reg.decimals,
+        isNative: reg.isNative,
+      });
+    }
+    for (const cust of customTokens[selectedChainId] ?? []) push(cust);
+    return out;
+  }, [sourceChain, selectedChainId, customTokens]);
+
   const [selectedTokenSymbol, setSelectedTokenSymbol] = useState<string>("ZRO");
   const selectedToken = useMemo(
     () =>
-      sourceChain.popularTokens.find((tok) => tok.symbol === selectedTokenSymbol) ??
-      sourceChain.popularTokens[0],
-    [sourceChain, selectedTokenSymbol],
+      availableTokens.find((tok) => tok.symbol === selectedTokenSymbol) ??
+      availableTokens[0],
+    [availableTokens, selectedTokenSymbol],
   );
 
   const [amountInput, setAmountInput] = useState<string>("");
-  const [tokenBalance, setTokenBalance] = useState<bigint>(0n);
+  const [balancesByAddr, setBalancesByAddr] = useState<Record<string, bigint>>({});
+  const tokenBalance = useMemo(() => {
+    const key = selectedToken.isNative ? "native" : selectedToken.address.toLowerCase();
+    return balancesByAddr[key] ?? 0n;
+  }, [balancesByAddr, selectedToken]);
+
   const [queueDepositInput, setQueueDepositInput] = useState<string>(
     sourceChain.defaultQueueDeposit,
   );
@@ -154,11 +222,12 @@ export default function TradeBridgePage() {
 
   useEffect(() => {
     setQueueDepositInput(sourceChain.defaultQueueDeposit);
-    if (!sourceChain.popularTokens.some((tok) => tok.symbol === selectedTokenSymbol)) {
+    if (!availableTokens.some((tok) => tok.symbol === selectedTokenSymbol)) {
       setSelectedTokenSymbol("ZRO");
     }
     setSwapQuote(null);
-  }, [sourceChain, selectedTokenSymbol]);
+    setTokenSearch("");
+  }, [sourceChain, availableTokens, selectedTokenSymbol]);
 
   const fetchStatus = useCallback(async () => {
     try {
@@ -203,7 +272,7 @@ export default function TradeBridgePage() {
 
   const refreshBalancesAndOrder = useCallback(async () => {
     if (!address) {
-      setTokenBalance(0n);
+      setBalancesByAddr({});
       setQueuedOrder(null);
       return;
     }
@@ -213,12 +282,22 @@ export default function TradeBridgePage() {
       const provider = new ethers.JsonRpcProvider(rpc, sourceChain.chainId, {
         staticNetwork: true,
       });
-      if (selectedToken.isNative) {
-        setTokenBalance(await provider.getBalance(address));
-      } else {
-        const erc = new ethers.Contract(selectedToken.address, ERC20_MIN_ABI, provider);
-        setTokenBalance(BigInt(await erc.balanceOf(address)));
-      }
+
+      const entries = await Promise.all(
+        availableTokens.map(async (tok): Promise<[string, bigint]> => {
+          const key = tok.isNative ? "native" : tok.address.toLowerCase();
+          try {
+            if (tok.isNative) {
+              return [key, await provider.getBalance(address)];
+            }
+            const erc = new ethers.Contract(tok.address, ERC20_MIN_ABI, provider);
+            return [key, BigInt(await erc.balanceOf(address))];
+          } catch {
+            return [key, 0n];
+          }
+        }),
+      );
+      setBalancesByAddr(Object.fromEntries(entries));
 
       if (currentChainStatus?.autoBridgeAddress) {
         const ab = new ethers.Contract(
@@ -242,11 +321,56 @@ export default function TradeBridgePage() {
     } catch {
       /* non-fatal */
     }
-  }, [address, sourceChain, selectedToken, currentChainStatus?.autoBridgeAddress]);
+  }, [address, sourceChain, availableTokens, currentChainStatus?.autoBridgeAddress]);
 
   useEffect(() => {
     refreshBalancesAndOrder();
   }, [refreshBalancesAndOrder]);
+
+  // Allow pasting any ERC-20 address into the Select Token modal search input
+  useEffect(() => {
+    const q = tokenSearch.trim();
+    if (!showTokenPicker || !ethers.isAddress(q)) return;
+    const lower = q.toLowerCase();
+    if (availableTokens.some((tok) => tok.address.toLowerCase() === lower)) return;
+    const rpc = sourceChain.rpcUrls[0];
+    if (!rpc) return;
+
+    let cancelled = false;
+    setLoadingCustomToken(true);
+    (async () => {
+      try {
+        const provider = new ethers.JsonRpcProvider(rpc, sourceChain.chainId, {
+          staticNetwork: true,
+        });
+        const erc = new ethers.Contract(q, ERC20_MIN_ABI, provider);
+        const [sym, name, dec] = await Promise.all([
+          erc.symbol(),
+          erc.name().catch(() => "ERC20 Token"),
+          erc.decimals(),
+        ]);
+        if (!cancelled && typeof sym === "string" && sym.trim()) {
+          const item: BridgeTokenItem = {
+            symbol: sym.trim(),
+            name: String(name || sym).trim(),
+            address: ethers.getAddress(q),
+            decimals: Number(dec),
+          };
+          setCustomTokens((prev) => ({
+            ...prev,
+            [selectedChainId]: [...(prev[selectedChainId] ?? []), item],
+          }));
+        }
+      } catch {
+        /* ignore invalid ERC20 */
+      } finally {
+        if (!cancelled) setLoadingCustomToken(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [tokenSearch, showTokenPicker, availableTokens, sourceChain, selectedChainId]);
 
   const parsedAmount = useMemo(() => {
     if (!amountInput || Number(amountInput) <= 0) return 0n;
@@ -480,6 +604,7 @@ export default function TradeBridgePage() {
   const isRouteOpen = Boolean(currentChainStatus?.open);
   const needsSwapFirst = selectedToken.symbol !== "ZRO";
   const feePct = (ZERO_FEE_BPS / 100).toFixed(2);
+  const pricesUsd = statusData?.pricesUsd ?? {};
 
   const estimatedZroOut = useMemo(() => {
     if (parsedAmount <= 0n) return "";
@@ -494,6 +619,52 @@ export default function TradeBridgePage() {
       : 0n;
     return Number(ethers.formatEther(parsedAmount - fee)).toFixed(4).replace(/\.?0+$/, "");
   }, [parsedAmount, needsSwapFirst, quotingSwap, swapQuote, currentChainStatus?.autoBridgeAddress]);
+
+  const fromUsdText = useMemo(() => {
+    if (parsedAmount <= 0n) return null;
+    if (needsSwapFirst && swapQuote?.fromAmountUSD) {
+      return formatUsd(Number(swapQuote.fromAmountUSD));
+    }
+    const price = pricesUsd[selectedToken.symbol.toUpperCase()];
+    if (!price) return null;
+    return formatUsd(Number(ethers.formatUnits(parsedAmount, selectedToken.decimals)) * price);
+  }, [parsedAmount, needsSwapFirst, swapQuote, pricesUsd, selectedToken]);
+
+  const toUsdText = useMemo(() => {
+    if (!estimatedZroOut || estimatedZroOut === "…") return null;
+    if (needsSwapFirst && swapQuote?.toAmountUSD) {
+      const netUsd = Number(swapQuote.toAmountUSD) * (1 - ZERO_FEE_BPS / 10_000);
+      return formatUsd(netUsd);
+    }
+    const zroPrice = pricesUsd.ZRO;
+    if (!zroPrice) return null;
+    return formatUsd(Number(estimatedZroOut) * zroPrice);
+  }, [estimatedZroOut, needsSwapFirst, swapQuote, pricesUsd]);
+
+  const modalTokens = useMemo(() => {
+    const q = tokenSearch.trim().toLowerCase();
+    const filtered = q
+      ? availableTokens.filter(
+          (tok) =>
+            tok.symbol.toLowerCase().includes(q) ||
+            tok.name.toLowerCase().includes(q) ||
+            tok.address.toLowerCase() === q,
+        )
+      : availableTokens;
+
+    return [...filtered].sort((a, c) => {
+      if (a.symbol === "ZRO") return -1;
+      if (c.symbol === "ZRO") return 1;
+      const aKey = a.isNative ? "native" : a.address.toLowerCase();
+      const cKey = c.isNative ? "native" : c.address.toLowerCase();
+      const aBal = balancesByAddr[aKey] ?? 0n;
+      const cBal = balancesByAddr[cKey] ?? 0n;
+      const aHas = aBal > 0n ? 1 : 0;
+      const cHas = cBal > 0n ? 1 : 0;
+      if (aHas !== cHas) return cHas - aHas;
+      return 0;
+    });
+  }, [availableTokens, tokenSearch, balancesByAddr]);
 
   return (
     <div className={t.card}>
@@ -554,13 +725,14 @@ export default function TradeBridgePage() {
         </div>
 
         <div className={t.sub}>
-          <span>
-            {needsSwapFirst ? `Swaps to ZRO via LI.FI` : `Canonical LayerZero OFT`}
+          <span className={fromUsdText ? t.usdValue : undefined}>
+            {fromUsdText ??
+              (needsSwapFirst ? `Swaps to ZRO via LI.FI` : `Canonical LayerZero OFT`)}
           </span>
           <span>
             Balance:{" "}
             <b onClick={() => setPercent(100)}>
-              {Number(ethers.formatUnits(tokenBalance, selectedToken.decimals)).toFixed(4)}
+              {formatBal(tokenBalance, selectedToken.decimals)}
             </b>
           </span>
         </div>
@@ -596,10 +768,11 @@ export default function TradeBridgePage() {
         </div>
 
         <div className={t.sub}>
-          <span>
-            {address
-              ? `To ${address.slice(0, 6)}…${address.slice(-4)} on Zero`
-              : "Delivered to your same address on Zero"}
+          <span className={toUsdText ? t.usdValue : undefined}>
+            {toUsdText ??
+              (address
+                ? `To ${address.slice(0, 6)}…${address.slice(-4)} on Zero`
+                : "Delivered to your same address on Zero")}
           </span>
           <span>Native gas</span>
         </div>
@@ -888,7 +1061,7 @@ export default function TradeBridgePage() {
         </Portal>
       )}
 
-      {/* Source Token Modal */}
+      {/* Source Token Modal — full token list, live balances, search & paste 0x */}
       {showTokenPicker && (
         <Portal>
           <div
@@ -915,12 +1088,34 @@ export default function TradeBridgePage() {
                 </button>
               </div>
               <div className={m.mb}>
+                <div className={b.searchWrap}>
+                  <input
+                    className={b.searchInput}
+                    type="text"
+                    placeholder="Search symbol or paste 0x token address…"
+                    value={tokenSearch}
+                    onChange={(e) => setTokenSearch(e.target.value)}
+                  />
+                </div>
                 <div className={m.list}>
-                  {sourceChain.popularTokens.map((tok) => {
+                  {loadingCustomToken && (
+                    <div className={b.empty}>
+                      Looking up token contract on {sourceChain.shortName}…
+                    </div>
+                  )}
+                  {modalTokens.map((tok) => {
                     const isSelected = tok.symbol === selectedToken.symbol;
+                    const key = tok.isNative ? "native" : tok.address.toLowerCase();
+                    const rawBal = balancesByAddr[key] ?? 0n;
+                    const balText = formatBal(rawBal, tok.decimals);
+                    const price = pricesUsd[tok.symbol.toUpperCase()];
+                    const usdText =
+                      rawBal > 0n && price
+                        ? formatUsd(Number(ethers.formatUnits(rawBal, tok.decimals)) * price)
+                        : null;
                     return (
                       <button
-                        key={tok.symbol}
+                        key={`${tok.symbol}-${tok.address}`}
                         type="button"
                         className={m.row}
                         onClick={() => {
@@ -936,13 +1131,25 @@ export default function TradeBridgePage() {
                           <div className={m.rs}>
                             {tok.symbol === "ZRO"
                               ? "Direct LayerZero OFT → Zero"
-                              : `${tok.name} · Swaps to ZRO via LI.FI`}
+                              : tok.name}
                           </div>
                         </div>
-                        {isSelected && <span className={m.current}>Selected</span>}
+                        <div className={b.tokBalCol}>
+                          <span className={b.tokBalVal}>{balText}</span>
+                          {usdText ? (
+                            <span className={b.tokBalUsd}>{usdText}</span>
+                          ) : isSelected ? (
+                            <span className={b.tokBalUsd}>Selected</span>
+                          ) : null}
+                        </div>
                       </button>
                     );
                   })}
+                  {!loadingCustomToken && modalTokens.length === 0 && (
+                    <div className={b.empty}>
+                      No matching token. Paste any ERC-20 address on {sourceChain.shortName}.
+                    </div>
+                  )}
                 </div>
               </div>
             </div>
