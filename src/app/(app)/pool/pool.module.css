@@ -516,7 +516,8 @@
   color: var(--k-t2);
   display: flex;
   align-items: center;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
+  white-space: nowrap;
   gap: 6px;
 }
 /* Its own baseline alignment, so the logo centres on the label rather than
@@ -1533,8 +1534,8 @@ a.txAction:hover {
 @media (max-width: 960px) {
   .pools .thead,
   .pools .row {
-    grid-template-columns: 190px 120px 100px 120px 110px 96px;
-    min-width: 796px;
+    grid-template-columns: 210px 100px 175px 110px 100px 96px;
+    min-width: 850px;
   }
   .pools .thead > :not(:first-child),
   .pools .row > :not(.pairCell) {
@@ -1675,9 +1676,15 @@ a.txAction:hover {
   }
   .pools .thead,
   .pools .row {
-    min-width: 700px;
-    grid-template-columns: minmax(210px, 1.75fr) 0.9fr 1.25fr 0.95fr 0.9fr 86px;
-    gap: 10px;
+    min-width: 840px;
+    grid-template-columns:
+      minmax(210px, 1.75fr)
+      minmax(92px, 0.9fr)
+      minmax(175px, 1.5fr)
+      minmax(96px, 0.95fr)
+      minmax(90px, 0.9fr)
+      88px;
+    gap: 12px;
   }
   .pools .thead {
     display: grid;

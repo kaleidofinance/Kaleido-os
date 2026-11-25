@@ -36,7 +36,7 @@ export interface RefreshDecision {
   entry?: ExternalPoolRegistryEntry;
 }
 
-export const EXTERNAL_POOL_SCAN_CHAIN_IDS = [5042, 4663, 56, 99901] as const;
+export const EXTERNAL_POOL_SCAN_CHAIN_IDS = [5042, 4663, 56, 8453, 99901] as const;
 export const DEFAULT_EXTERNAL_POOL_TVL_FLOOR_USD = 10_000;
 
 const ADDRESS_RE = /^0x[0-9a-f]{40}$/i;

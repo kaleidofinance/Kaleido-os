@@ -11,6 +11,7 @@ export async function GET() {
       readExternalPools(5042),
       readExternalPools(4663),
       readExternalPools(56),
+      readExternalPools(8453),
       readExternalPools(99901),
       readSynthraPools(4663),
       readSynthraPools(5042),

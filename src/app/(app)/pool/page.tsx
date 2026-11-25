@@ -29,6 +29,20 @@ import {
 import { feeLabel } from "./format";
 import s from "./pool.module.css";
 
+/** Compact DEX display label so venue + chain tag fit on one horizontal line. */
+function shortExchangeName(exchange: string): string {
+  const key = exchange.toLowerCase();
+  if (key.startsWith("pancake")) return "PancakeSwap";
+  if (key.startsWith("nomiswap")) return "Nomiswap";
+  if (key.startsWith("orvex")) return "Orvex";
+  if (key.startsWith("aero")) return "Aerodrome";
+  if (key.startsWith("ramses")) return "Ramses";
+  if (key.startsWith("uniswap-v4")) return "Uniswap v4";
+  if (key.startsWith("uniswap-v3")) return "Uniswap v3";
+  if (key.startsWith("uniswap")) return "Uniswap";
+  return exchange;
+}
+
 /**
  * All pools — the Liquidity section's landing page.
  *
@@ -533,7 +547,7 @@ export default function PoolsPage() {
                             className={s.pairFee}
                             title={`${pool.provider === "synthra" ? "Synthra indexed metadata; execution still requires a fresh best-execution quote" : `Curated ${pool.provider ?? "external"} route`}; metrics from ${pool.metricsSource ?? "dated registry snapshot"}${pool.metricsAsOf ? ` as of ${pool.metricsAsOf}` : ""}`}
                           >
-                            <span>{pool.exchange}</span>
+                            <span>{shortExchangeName(pool.exchange)}</span>
                             <ChainTag chainId={pool.chainId} />
                           </div>
                         </div>

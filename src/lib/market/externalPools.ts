@@ -40,7 +40,7 @@ export interface ExternalPoolSnapshot {
   refreshDue: boolean;
 }
 
-const SUPPORTED_EXTERNAL_CHAINS = new Set([5042, 4663, 56, 99901]);
+const SUPPORTED_EXTERNAL_CHAINS = new Set([5042, 4663, 56, 8453, 99901]);
 
 const sum = (values: Array<number | null>): number | null => {
   const known = values.filter((value): value is number => value !== null);
