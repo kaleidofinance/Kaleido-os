@@ -1,6 +1,8 @@
 import { useState } from "react";
 import type { AgentCard, CardTone } from "@/lib/v2/cards/types";
 import { customBuyCommand } from "@/lib/v2/cards/tokenCard";
+import { useSpotPrices } from "@/hooks/useSpotPrices";
+import { usd } from "@/lib/format/figures";
 import TokenIcon from "./TokenIcon";
 import s from "./AgentCards.module.css";
 
@@ -387,6 +389,64 @@ function whenLabel(at?: number): string {
   return `from ${Math.round(hrs / 24)}d ago`;
 }
 
+function parseNumericAmount(amount: string): number | null {
+  const m = amount.replace(/,/g, "").trim().match(/^([0-9]+(?:\.[0-9]+)?)/);
+  if (!m) return null;
+  const n = Number(m[1]);
+  return Number.isFinite(n) && n >= 0 ? n : null;
+}
+
+function BalanceCardView({
+  card,
+}: {
+  card: Extract<AgentCard, { kind: "balance" }>;
+}) {
+  const { priceOf } = useSpotPrices();
+  return (
+    <div className={s.card}>
+      {card.title && <div className={s.title}>{card.title}</div>}
+      <div className={s.rows}>
+        {card.rows.map((row, j) => {
+          const existingNote = row.note?.trim() ?? "";
+          const hasUsd =
+            existingNote.includes("$") ||
+            existingNote.toLowerCase() === "no price feed";
+          let displayNote = existingNote;
+          if (!hasUsd) {
+            const qty = parseNumericAmount(row.amount);
+            const px = qty !== null ? priceOf(row.symbol) : null;
+            if (qty !== null && px !== null) {
+              const usdVal = usd(qty * px, 2);
+              displayNote = existingNote
+                ? `${usdVal} · ${existingNote}`
+                : usdVal;
+            }
+          }
+          return (
+            <div key={j} className={`${s.row} ${s.rowBalance}`}>
+              <span className={s.bSym}>
+                {/* A build-time logo, keyed on the symbol the card
+                    already carries — the renderer supplies the art, the
+                    card stays pure data. The slot reserves its width even
+                    when a token has no logo, so a mixed list still aligns
+                    on the symbol beside it. */}
+                <span className={s.bIcon}>
+                  <TokenIcon symbol={row.symbol} size={18} fallback={null} />
+                </span>
+                <span className={s.bSymbol}>{row.symbol}</span>
+              </span>
+              <span className={`${s.rValue} tabular`}>
+                {row.amount}
+                {displayNote && <span className={s.bNote}>{displayNote}</span>}
+              </span>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 export default function AgentCards({
   cards,
   onPrompt,
@@ -504,38 +564,7 @@ export default function AgentCards({
             );
 
           case "balance":
-            return (
-              <div key={i} className={s.card}>
-                {card.title && <div className={s.title}>{card.title}</div>}
-                <div className={s.rows}>
-                  {card.rows.map((row, j) => (
-                    <div key={j} className={`${s.row} ${s.rowBalance}`}>
-                      <span className={s.bSym}>
-                        {/* A build-time logo, keyed on the symbol the card
-                            already carries — the renderer supplies the art, the
-                            card stays pure data. The slot reserves its width even
-                            when a token has no logo, so a mixed list still aligns
-                            on the symbol beside it. */}
-                        <span className={s.bIcon}>
-                          <TokenIcon
-                            symbol={row.symbol}
-                            size={18}
-                            fallback={null}
-                          />
-                        </span>
-                        <span className={s.bSymbol}>{row.symbol}</span>
-                      </span>
-                      <span className={`${s.rValue} tabular`}>
-                        {row.amount}
-                        {row.note && (
-                          <span className={s.bNote}>{row.note}</span>
-                        )}
-                      </span>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            );
+            return <BalanceCardView key={i} card={card} />;
 
           case "notice":
             return (
