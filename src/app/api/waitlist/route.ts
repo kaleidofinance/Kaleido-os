@@ -205,6 +205,16 @@ async function standing(wallet: string): Promise<WaitlistStatus | null> {
       now,
       closedX.towerIntegrationComment,
     ),
+    zeroBridgeIntegration: xTaskState(
+      row.x_zero_bridge_integration_at as string | null,
+      now,
+      closedX.zeroBridgeIntegration,
+    ),
+    zeroBridgeIntegrationComment: xTaskState(
+      row.x_zero_bridge_integration_comment_at as string | null,
+      now,
+      closedX.zeroBridgeIntegrationComment,
+    ),
     argusIntegrationComment: xTaskState(
       row.x_argus_integration_comment_at as string | null,
       now,

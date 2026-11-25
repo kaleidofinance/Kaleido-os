@@ -32,6 +32,8 @@ export const WAITLIST_TASK_POINTS = {
   synthraIntegrationComment: 300,
   towerIntegration: 300,
   towerIntegrationComment: 300,
+  zeroBridgeIntegration: 300,
+  zeroBridgeIntegrationComment: 300,
   arcMainnet: 300,
   agent: 500,
   bridge: 500,
@@ -69,6 +71,8 @@ export interface WaitlistRewardRow {
   x_synthra_integration_comment_at?: string | null;
   x_tower_integration_at?: string | null;
   x_tower_integration_comment_at?: string | null;
+  x_zero_bridge_integration_at?: string | null;
+  x_zero_bridge_integration_comment_at?: string | null;
   arc_mainnet_tx_at?: string | null;
   agent_tx_at?: string | null;
   bridge_tx_at?: string | null;
@@ -166,6 +170,8 @@ export function projectWaitlistRewards(
     heldTask("Comment on Synthra SynRoute + LaunchPad Integration", WAITLIST_TASK_POINTS.synthraIntegrationComment, row.x_synthra_integration_comment_at, now),
     heldTask("Like & RT Tower Exchange Integration Announcement", WAITLIST_TASK_POINTS.towerIntegration, row.x_tower_integration_at, now),
     heldTask("Comment on Tower Exchange Integration Announcement", WAITLIST_TASK_POINTS.towerIntegrationComment, row.x_tower_integration_comment_at, now),
+    heldTask("Like & RT The Zero Bridge Integration", WAITLIST_TASK_POINTS.zeroBridgeIntegration, row.x_zero_bridge_integration_at, now),
+    heldTask("Comment on The Zero Bridge Integration", WAITLIST_TASK_POINTS.zeroBridgeIntegrationComment, row.x_zero_bridge_integration_comment_at, now),
     {
       task: "First Arc mainnet transaction",
       points: WAITLIST_TASK_POINTS.arcMainnet,

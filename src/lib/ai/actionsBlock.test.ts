@@ -362,6 +362,29 @@ function main() {
       JSON.stringify(visibleProse(full)),
     );
   }
+
+  console.log("\n— mislabelled json/bare card fence recovers balance card —");
+  {
+    const raw =
+      'Here are your spendable assets.\n\n```json\n{"title": "Spendable Assets", "rows": [{"symbol": "USDC", "amount": "0.90", "note": "on BSC"}, {"symbol": "ETH", "amount": "0.0028", "note": "on Base"}]}\n```';
+    const r = splitCards(raw);
+    check("raw json fence stripped from prose", r.text === "Here are your spendable assets.", r.text);
+    check("recovered 1 balance card", r.cards.length === 1, JSON.stringify(r.cards));
+    const card = r.cards[0] as { kind?: string; title?: string; rows?: unknown[] };
+    check(
+      "inferred kind=balance with rows intact",
+      card?.kind === "balance" && card?.title === "Spendable Assets" && card?.rows?.length === 2,
+      JSON.stringify(card),
+    );
+
+    const normalCode = 'Example:\n\n```json\n{"foo": "bar"}\n```';
+    const untouched = splitCards(normalCode);
+    check(
+      "ordinary non-card json stays in prose",
+      untouched.cards.length === 0 && untouched.text.includes('"foo": "bar"'),
+      JSON.stringify(untouched),
+    );
+  }
 }
 
 main();

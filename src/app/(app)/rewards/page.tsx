@@ -50,7 +50,7 @@ const ARC_CHAIN = defineChain(
 // so this page and the payload can't drift out of sync (what caused the arcMainnet
 // crash). Reads below stay defensively optional-chained for API/bundle version skew.
 type Status = WaitlistStatus | null;
-type XTaskKey = "link" | "follow" | "retweet" | "comment" | "launch" | "llama" | "argus" | "argus2" | "elysiumIntegration" | "elysiumIntegrationComment" | "elysiumLending" | "elysiumLendingComment" | "peachIntegration" | "peachIntegrationComment" | "synthraIntegration" | "synthraIntegrationComment" | "towerIntegration" | "towerIntegrationComment";
+type XTaskKey = "link" | "follow" | "retweet" | "comment" | "launch" | "llama" | "argus" | "argus2" | "elysiumIntegration" | "elysiumIntegrationComment" | "elysiumLending" | "elysiumLendingComment" | "peachIntegration" | "peachIntegrationComment" | "synthraIntegration" | "synthraIntegrationComment" | "towerIntegration" | "towerIntegrationComment" | "zeroBridgeIntegration" | "zeroBridgeIntegrationComment";
 
 const X_HANDLE = "kaleido_finance";
 // The launch post users repost for +100 $kPoint. Defaulted to the live announce
@@ -70,6 +70,7 @@ const ELYSIUM_LENDING_TWEET_ID = "2120544123119870428";
 const PEACH_INTEGRATION_TWEET_ID = "2120892376160075859";
 const SYNTHRA_INTEGRATION_TWEET_ID = "2122674818864533684";
 const TOWER_INTEGRATION_TWEET_ID = "2124101810738680139";
+const ZERO_BRIDGE_INTEGRATION_TWEET_ID = "2125288301833969907";
 const bridgeOpenedKey = (address: string) =>
   `kaleido.waitlist.bridge-opened:${address.toLowerCase()}`;
 
@@ -132,6 +133,8 @@ export default function WaitlistPage() {
     synthraIntegrationComment: boolean;
     towerIntegration: boolean;
     towerIntegrationComment: boolean;
+    zeroBridgeIntegration: boolean;
+    zeroBridgeIntegrationComment: boolean;
   }>({
     follow: false,
     retweet: false,
@@ -150,6 +153,8 @@ export default function WaitlistPage() {
     synthraIntegrationComment: false,
     towerIntegration: false,
     towerIntegrationComment: false,
+    zeroBridgeIntegration: false,
+    zeroBridgeIntegrationComment: false,
   });
   const [xBusy, setXBusy] = useState<XTaskKey | null>(null);
   const [transactionBusy, setTransactionBusy] = useState<"bridge" | null>(null);
@@ -466,7 +471,7 @@ export default function WaitlistPage() {
   }, [xLinkedCookie, postXTask]);
 
   const openIntent = useCallback(
-    (task: "follow" | "retweet" | "comment" | "launch" | "llama" | "argus" | "argus2" | "elysiumIntegration" | "elysiumIntegrationComment" | "elysiumLending" | "elysiumLendingComment" | "peachIntegration" | "peachIntegrationComment" | "synthraIntegration" | "synthraIntegrationComment" | "towerIntegration" | "towerIntegrationComment") => {
+    (task: "follow" | "retweet" | "comment" | "launch" | "llama" | "argus" | "argus2" | "elysiumIntegration" | "elysiumIntegrationComment" | "elysiumLending" | "elysiumLendingComment" | "peachIntegration" | "peachIntegrationComment" | "synthraIntegration" | "synthraIntegrationComment" | "towerIntegration" | "towerIntegrationComment" | "zeroBridgeIntegration" | "zeroBridgeIntegrationComment") => {
       const url =
         task === "follow"
           ? `https://x.com/intent/follow?screen_name=${X_HANDLE}`
@@ -494,6 +499,10 @@ export default function WaitlistPage() {
                   ? `https://x.com/intent/retweet?tweet_id=${TOWER_INTEGRATION_TWEET_ID}`
                 : task === "towerIntegrationComment"
                   ? `https://x.com/intent/tweet?in_reply_to=${TOWER_INTEGRATION_TWEET_ID}`
+                : task === "zeroBridgeIntegration"
+                  ? `https://x.com/intent/retweet?tweet_id=${ZERO_BRIDGE_INTEGRATION_TWEET_ID}`
+                : task === "zeroBridgeIntegrationComment"
+                  ? `https://x.com/intent/tweet?in_reply_to=${ZERO_BRIDGE_INTEGRATION_TWEET_ID}`
                 : task === "argus" || task === "argus2"
                   ? `https://x.com/kaleido_finance/status/${ARGUS_TWEET_ID}`
                 : `https://x.com/kaleido_finance/status/${MAINNET_LAUNCH_TWEET_ID}`;
@@ -1038,6 +1047,48 @@ export default function WaitlistPage() {
                         </button>
                       ) : (
                         <button className={s.taskBtn} onClick={() => openIntent("towerIntegrationComment")}>Comment</button>
+                      )}
+                  </li>
+
+                  <li className={s.task}>
+                    <div className={s.taskText}>
+                      <span className={s.taskTitle}>Like &amp; RT The Zero Bridge Integration</span>
+                      <span className={s.taskMeta}>
+                        {status.xTasks.zeroBridgeIntegration?.done
+                          ? status.xTasks.zeroBridgeIntegration.counted ? "Done" : "Done · counts within 5h"
+                          : status.xTasks.zeroBridgeIntegration?.closed ? "Closed · all 300 spots claimed"
+                          : !status.xTasks.linked.done ? "Link X first" : "First 300 wallets · +300 $kPoint"}
+                      </span>
+                    </div>
+                    {status.xTasks.zeroBridgeIntegration?.done ? <span className={s.taskDone}>✓</span>
+                      : status.xTasks.zeroBridgeIntegration?.closed || !status.xTasks.linked.done ? <span className={s.taskLock}>🔒</span>
+                      : opened.zeroBridgeIntegration ? (
+                        <button className={s.taskBtn} onClick={() => postXTask("zeroBridgeIntegration")} disabled={xBusy === "zeroBridgeIntegration"}>
+                          {xBusy === "zeroBridgeIntegration" ? "…" : "Claim"}
+                        </button>
+                      ) : (
+                        <button className={s.taskBtn} onClick={() => openIntent("zeroBridgeIntegration")}>Like &amp; RT</button>
+                      )}
+                  </li>
+
+                  <li className={s.task}>
+                    <div className={s.taskText}>
+                      <span className={s.taskTitle}>Comment on The Zero Bridge Integration</span>
+                      <span className={s.taskMeta}>
+                        {status.xTasks.zeroBridgeIntegrationComment?.done
+                          ? status.xTasks.zeroBridgeIntegrationComment.counted ? "Done" : "Done · counts within 5h"
+                          : status.xTasks.zeroBridgeIntegrationComment?.closed ? "Closed · all 300 spots claimed"
+                          : !status.xTasks.linked.done ? "Link X first" : "First 300 wallets · +300 $kPoint"}
+                      </span>
+                    </div>
+                    {status.xTasks.zeroBridgeIntegrationComment?.done ? <span className={s.taskDone}>✓</span>
+                      : status.xTasks.zeroBridgeIntegrationComment?.closed || !status.xTasks.linked.done ? <span className={s.taskLock}>🔒</span>
+                      : opened.zeroBridgeIntegrationComment ? (
+                        <button className={s.taskBtn} onClick={() => postXTask("zeroBridgeIntegrationComment")} disabled={xBusy === "zeroBridgeIntegrationComment"}>
+                          {xBusy === "zeroBridgeIntegrationComment" ? "…" : "Claim"}
+                        </button>
+                      ) : (
+                        <button className={s.taskBtn} onClick={() => openIntent("zeroBridgeIntegrationComment")}>Comment</button>
                       )}
                   </li>
 

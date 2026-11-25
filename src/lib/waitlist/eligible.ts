@@ -66,6 +66,10 @@ export const X_TASK_POINTS = {
   towerIntegration: 300,
   /** Comment on the Tower Exchange integration post; first 300 wallets. */
   towerIntegrationComment: 300,
+  /** Like & RT The Zero Bridge Integration post; first 300 wallets. */
+  zeroBridgeIntegration: 300,
+  /** Comment on The Zero Bridge Integration post; first 300 wallets. */
+  zeroBridgeIntegrationComment: 300,
   bitget: 100,
 } as const;
 
@@ -102,6 +106,8 @@ export const X_TASK_COLUMNS: Record<XTaskPointKey, string> = {
   synthraIntegrationComment: "x_synthra_integration_comment_at",
   towerIntegration: "x_tower_integration_at",
   towerIntegrationComment: "x_tower_integration_comment_at",
+  zeroBridgeIntegration: "x_zero_bridge_integration_at",
+  zeroBridgeIntegrationComment: "x_zero_bridge_integration_comment_at",
   bitget: "x_bitget_at",
 };
 

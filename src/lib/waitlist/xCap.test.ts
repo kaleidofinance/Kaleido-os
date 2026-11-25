@@ -28,7 +28,7 @@ const capped = Object.keys(CAPPED_X_TASKS).sort();
 check(
   "the capped tasks include historical ARGUS, Luca, Elysium, Peach, Synthra, and Tower tasks",
   JSON.stringify(capped) ===
-    JSON.stringify(["absexit", "argus", "argus2", "argusIntegration", "argusIntegrationComment", "commented", "elysiumIntegration", "elysiumIntegrationComment", "elysiumLending", "elysiumLendingComment", "lucaModelIntegration", "lucaModelIntegrationComment", "peachIntegration", "peachIntegrationComment", "robinhoodIntegration", "robinhoodIntegrationComment", "synthraIntegration", "synthraIntegrationComment", "towerIntegration", "towerIntegrationComment"]),
+    JSON.stringify(["absexit", "argus", "argus2", "argusIntegration", "argusIntegrationComment", "commented", "elysiumIntegration", "elysiumIntegrationComment", "elysiumLending", "elysiumLendingComment", "lucaModelIntegration", "lucaModelIntegrationComment", "peachIntegration", "peachIntegrationComment", "robinhoodIntegration", "robinhoodIntegrationComment", "synthraIntegration", "synthraIntegrationComment", "towerIntegration", "towerIntegrationComment", "zeroBridgeIntegration", "zeroBridgeIntegrationComment"]),
 );
 check("argus is first-100", X_TASK_CAPS.argus === 100 && capForColumn("x_argus_at") === 100);
 check("argus batch 2 is 50", capForColumn("x_argus2_at") === 50);

@@ -152,21 +152,88 @@ function parseActions(body: string): OfferedAction[] {
   }
 }
 
+const DISPLAY_CARD_KINDS = new Set([
+  "metric",
+  "stats",
+  "balance",
+  "notice",
+  "gauge",
+  "token",
+  "connect",
+]);
+
+/**
+ * Normalizes a parsed JSON object into a display card when it either carries
+ * a known `kind` or unambiguously matches a balance/stats card shape (for
+ * example when a model omits `"kind": "balance"` on a Spendable Assets table).
+ * Arbitrary JSON objects return null so ordinary code snippets stay prose.
+ */
+function normalizeCardObject(raw: unknown): Record<string, unknown> | null {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return null;
+  const obj = raw as Record<string, unknown>;
+  if (typeof obj.kind === "string") {
+    return DISPLAY_CARD_KINDS.has(obj.kind) ? obj : null;
+  }
+  if (Array.isArray(obj.rows) && obj.rows.length > 0) {
+    const validRows = obj.rows.every((r) => r && typeof r === "object");
+    if (!validRows) return null;
+    const isBalance = obj.rows.every((r) => {
+      const row = r as Record<string, unknown>;
+      return typeof row.symbol === "string" && typeof row.amount === "string";
+    });
+    if (isBalance) return { kind: "balance", ...obj };
+    const isStats = obj.rows.every((r) => {
+      const row = r as Record<string, unknown>;
+      return typeof row.label === "string" && typeof row.value === "string";
+    });
+    if (isStats) return { kind: "stats", ...obj };
+  }
+  return null;
+}
+
 /**
  * Parses a cards body into raw card objects — validated downstream by
- * `cardsFromChat`, never here. Accepts a bare array or a `{cards: [...]}` wrapper.
+ * `cardsFromChat`, never here. Accepts a bare array, a `{cards: [...]}` wrapper,
+ * or a single card-shaped object (e.g. `{title, rows: [{symbol, amount}]}`).
  */
-function parseCardArray(body: string): unknown[] {
+function parseCardArray(body: string, strict = false): unknown[] {
   try {
     const parsed: unknown = JSON.parse(body.trim());
-    if (Array.isArray(parsed)) return parsed;
-    if (Array.isArray((parsed as { cards?: unknown })?.cards)) {
-      return (parsed as { cards: unknown[] }).cards;
+    const list = Array.isArray(parsed)
+      ? parsed
+      : Array.isArray((parsed as { cards?: unknown })?.cards)
+        ? (parsed as { cards: unknown[] }).cards
+        : [parsed];
+    if (strict) {
+      return list
+        .map((item) => normalizeCardObject(item))
+        .filter((item): item is Record<string, unknown> => item !== null);
     }
-    return [];
+    return list
+      .map((item) => normalizeCardObject(item) ?? (Array.isArray(parsed) ? item : null))
+      .filter((item) => item !== null);
   } catch {
     return [];
   }
+}
+
+/**
+ * Recovers card JSON that a model accidentally wrapped in ```json, ```balance,
+ * ```stats, ```card, or an untagged ``` fence instead of ```cards. Only lifts
+ * blocks whose JSON body parses strictly as one or more recognized display
+ * cards; ordinary code fences and non-card JSON stay untouched in the prose.
+ */
+function cutMislabelledCardFence(text: string): { text: string; cards: unknown[] } {
+  const re = /```(?:json|card|balance|stats|metric|gauge|notice)?\s*\n([\s\S]*?)```/gi;
+  const recovered: unknown[] = [];
+  const next = text.replace(re, (full, body: string) => {
+    const found = parseCardArray(body, true);
+    if (!found.length) return full;
+    recovered.push(...found);
+    return "";
+  });
+  if (!recovered.length) return { text, cards: [] };
+  return { text: next.replace(/\n{3,}/g, "\n\n").trim(), cards: recovered };
 }
 
 /* A few providers occasionally follow the instruction semantically but omit
@@ -206,18 +273,27 @@ export function splitActionsBlock(text: string): SplitReply {
  */
 export function splitCards(text: string): { text: string; cards: unknown[] } {
   const cards: unknown[] = [];
+  let working = text;
 
-  const c = cutFence(text, CARDS_FENCE);
-  if (c.body !== null) cards.push(...parseCardArray(c.body));
-  else {
-    const recovered = cutUnfencedCards(text);
-    if (recovered.cards.length) {
-      cards.push(...recovered.cards);
-      text = recovered.text;
+  const c = cutFence(working, CARDS_FENCE);
+  if (c.body !== null) {
+    cards.push(...parseCardArray(c.body));
+    working = c.prose;
+  } else {
+    const mislabelled = cutMislabelledCardFence(working);
+    if (mislabelled.cards.length) {
+      cards.push(...mislabelled.cards);
+      working = mislabelled.text;
+    } else {
+      const recovered = cutUnfencedCards(working);
+      if (recovered.cards.length) {
+        cards.push(...recovered.cards);
+        working = recovered.text;
+      }
     }
   }
 
-  const a = cutFence(c.body === null && cards.length ? text : c.prose, ACTIONS_FENCE);
+  const a = cutFence(working, ACTIONS_FENCE);
   if (a.body !== null) {
     const actions = parseActions(a.body);
     if (actions.length) cards.push({ kind: "actions", actions });
